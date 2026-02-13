@@ -3,7 +3,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>JESIDI - IoT</title>
+  <title>Sensores (3 &lt;p&gt;)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>body{margin:16px;font:16px system-ui;background:#111;color:#eee} p{margin:.5rem 0}</style>
 </head>
@@ -12,21 +12,23 @@
   <p id="temp"><b>Temperatura:</b> — °C</p>
   <p id="hum"><b>Humedad:</b> — %</p>
   <p id="dist"><b>Distancia:</b> — cm</p>
-  <p style="color:#9aa">Broker: wss://broker.hivemq.com:8884/mqtt · Topic: <code>jesidi_iot/+/sensors</code></p>
+  <p style="color:#9aa">Broker: wss://broker.hivemq.com:8884/mqtt · Topic: <code>JESIDI-IOT-POC-200574</code></p>
 
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script>
     const $ = id => document.getElementById(id);
     const client = mqtt.connect("wss://broker.hivemq.com:8884/mqtt"); // WebSockets
-    client.on("connect", () => client.subscribe("jesidi_iot/+/sensors"));
+    client.on("connect", () => client.subscribe("JESIDI-IOT-POC-200574"));
     client.on("message", (_t, payload) => {
       try {
         const j = JSON.parse(payload.toString());
-        if (j.temperature_c != null) $("temp").innerHTML = `<b>Temperatura:</b> ${j.temperature_c.toFixed(1)} °C`;
-        if (j.humidity_pct  != null) $("hum").innerHTML  = `<b>Humedad:</b> ${j.humidity_pct.toFixed(1)} %`;
-        if (j.distance_cm   != null) $("dist").innerHTML = `<b>Distancia:</b> ${j.distance_cm.toFixed(1)} cm`;
+        console.log(j)
+        if (j.temp != null) $("temp").innerHTML = `<b>Temperatura:</b> ${j.temp.toFixed(1)} °C`;
+        if (j.hum  != null) $("hum").innerHTML  = `<b>Humedad:</b> ${j.hum.toFixed(1)} %`;
+        if (j.dist  != null) $("dist").innerHTML = `<b>Distancia:</b> ${j.dist.toFixed(1)} cm`;
       } catch (e) {}
     });
   </script>
 </body>
 </html>
+
