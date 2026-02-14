@@ -41,9 +41,21 @@
 
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script>
+    // variables
     let sensorDist = 150;
-    let sensorTemp = 20;
+    let sensorTemp = 22;
     let sensorHum = 50;
+    let currentPaletteIndex = 0;
+    let palette;
+    let squares = [];
+    let maxSquares = 27;
+    let palettes = [
+      ['#5f0f40', '#9a031e', '#fb8b24', '#e36414', '#0f4c5c'],
+      ['#009F40', '#ffe5d9', '#ffcad4', '#f4acb7', '#9d8189'],
+      ['#335c67', '#fff3b0', '#e09f3e', '#9e2a2b', '#540b0e'],
+      ['#CAA719', '#dde5b6', '#adc178', '#a98467', '#6c584c'],
+      ['#e63946', '#D4DAD1', '#a8dadc', '#457b9d', '#1d3557']
+    ];
 
     const $ = id => document.getElementById(id);
     const clientId = "js_client_" + Math.random().toString(16).substr(2, 8);
@@ -59,6 +71,19 @@
         if (j.temp != null) {
           $("temp").innerHTML = `<b>T:</b> ${j.temp.toFixed(1)}°C`;
           sensorTemp = j.temp;
+          let tempCiclo = sensorTemp % 6;
+
+          // 2. Mapeamos ese valor de 0-5.99 al rango de índices de tus paletas (0-4)
+          // Usamos constrain para evitar errores si la temperatura es negativa
+          let index = floor(map(max(0, tempCiclo), 0, 6, 0, palettes.length));
+
+          // 3. Solo actualizamos si el índice ha cambiado
+          if (index !== currentPaletteIndex) {
+            currentPaletteIndex = index;
+            palette = palettes[currentPaletteIndex];
+            paletteIndex = 0; // Reiniciamos el orden interno de la paleta
+          }
+          console.log(currentPaletteIndex);
         }
         if (j.hum != null) {
           $("hum").innerHTML = `<b>H:</b> ${j.hum.toFixed(1)}%`;
@@ -71,22 +96,11 @@
       } catch (e) { console.error("Error MQTT:", e); }
     });
 
-    let squares = [];
-    let maxSquares = 27;
-    let palettes = [
-      ['#5f0f40', '#9a031e', '#fb8b24', '#e36414', '#0f4c5c'],
-      ['#009F40', '#ffe5d9', '#ffcad4', '#f4acb7', '#9d8189'],
-      ['#335c67', '#fff3b0', '#e09f3e', '#9e2a2b', '#540b0e'],
-      ['#CAA719', '#dde5b6', '#adc178', '#a98467', '#6c584c'],
-      ['#e63946', '#D4DAD1', '#a8dadc', '#457b9d', '#1d3557']
-    ];
-
-    let palette = [];
-    let paletteIndex = 0;
-
+    
+    
     function setup() {
       createCanvas(windowWidth, windowHeight);
-      palette = random(palettes);
+      palette = palettes[currentPaletteIndex];
       squares = [];
       paletteIndex = 0;
       for (let i = 0; i < maxSquares; i++) {
