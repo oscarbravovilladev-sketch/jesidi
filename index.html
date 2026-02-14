@@ -47,7 +47,7 @@
 
     const $ = id => document.getElementById(id);
     const clientId = "js_client_" + Math.random().toString(16).substr(2, 8);
-    const client = mqtt.connect("wss://://broker.hivemq.com", {
+    const client = mqtt.connect("wss://broker.hivemq.com:8884/mqtt", {
       clientId: clientId,
       clean: true
     });
@@ -125,7 +125,7 @@
       let size = map(sensorDist, 0, 310, baseUnit * 0.05, baseUnit * 0.5);
       size = constrain(size, 20, baseUnit * 0.7);
 
-      let speed = random(0, 100);
+      let speed = random(40, 100);
       let margin = baseUnit * 0.05;
       let x = random(margin, width - size - margin);
       let y = random(margin, height - size - margin);
