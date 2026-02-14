@@ -48,7 +48,9 @@
     let currentPaletteIndex = 0;
     let palette;
     let squares = [];
-    let maxSquares = 27;
+    let maxSquares = 1;
+    let lastMessageTime = 0; // Para saber si estamos recibiendo datos
+    let mqttActive = false;
     let palettes = [
       ['#5f0f40', '#9a031e', '#fb8b24', '#e36414', '#0f4c5c'],
       ['#009F40', '#ffe5d9', '#ffcad4', '#f4acb7', '#9d8189'],
@@ -69,6 +71,8 @@
       try {
         const j = JSON.parse(payload.toString());
         if (j.temp != null) {
+          mqttActive = true;
+          lastMessageTime = millis();
           $("temp").innerHTML = `<b>T:</b> ${j.temp.toFixed(1)}°C`;
           sensorTemp = j.temp;
           let tempCiclo = sensorTemp % 6;
@@ -88,6 +92,7 @@
         if (j.hum != null) {
           $("hum").innerHTML = `<b>H:</b> ${j.hum.toFixed(1)}%`;
           sensorHum = j.hum;
+          maxSquares = max(1, floor(sensorHum / 2));
         }
         if (j.dist != null) {
           $("dist").innerHTML = `<b>D:</b> ${j.dist.toFixed(1)}cm`;
@@ -96,8 +101,8 @@
       } catch (e) { console.error("Error MQTT:", e); }
     });
 
-    
-    
+
+
     function setup() {
       createCanvas(windowWidth, windowHeight);
       palette = palettes[currentPaletteIndex];
@@ -113,6 +118,10 @@
     }
 
     function draw() {
+      if (millis() - lastMessageTime > 5000) {
+        mqttActive = false;
+        maxSquares = 1; // Solo un cuadro en reposo
+      }
       background(230);
       let now = millis();
       let baseWeight = min(width, height) / 60;
@@ -135,17 +144,26 @@
 
     function createRandomSquare() {
       let baseUnit = min(width, height);
-      // Mapeo proporcional a la pantalla
       let size = map(sensorDist, 0, 310, baseUnit * 0.05, baseUnit * 0.5);
       size = constrain(size, 20, baseUnit * 0.7);
 
-      let speed = random(40, 100);
-      let margin = baseUnit * 0.05;
-      let x = random(margin, width - size - margin);
-      let y = random(margin, height - size - margin);
+      let x, y;
 
+      if (!mqttActive) {
+        // ESTADO REPOSO: Centrado absoluto
+        x = width / 2 - size / 2;
+        y = height / 2 - size / 2;
+      } else {
+        // ESTADO ACTIVO: Posición aleatoria con margen
+        let margin = baseUnit * 0.05;
+        x = random(margin, width - size - margin);
+        y = random(margin, height - size - margin);
+      }
+
+      let speed = random(40, 80);
       let color = palette[paletteIndex];
       paletteIndex = (paletteIndex + 1) % palette.length;
+
       return new ColoredAnimatedSquare(x, y, size, speed, color);
     }
 
