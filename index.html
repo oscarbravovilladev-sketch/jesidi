@@ -217,7 +217,8 @@
 
         if (this.state === 'drawing') {
           let currentStroke = this.points[this.strokeIndex];
-          this.strokeProgress += this.speed * dt;
+          let pointsPerSecond = this.speed; 
+          this.strokeProgress += pointsPerSecond * dt;
 
           if (this.strokeProgress >= currentStroke.length) {
             this.strokeIndex++;
