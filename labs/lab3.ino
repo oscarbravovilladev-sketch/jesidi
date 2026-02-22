@@ -121,7 +121,7 @@ int determinarZonaApp(int16_t x, int16_t y) {
   if (rx >= -3915 && rx <= -774 && ry >= -3573 && ry <= -459) return 2;
 
   // Si no cumple NINGUNA de las anteriores, devolverá -1 obligatoriamente
-  return -1; 
+  return -1;
 }
 
 void setup() {
@@ -163,39 +163,39 @@ void loop() {
 
   // Lógica con la nueva librería
   if (ld2450.update()) {
+    int targetsRealesContados = 0; 
     int numTargets = ld2450.getNrValidTargets();
 
     // Solo enviamos a MQTT cada 1 segundo para no saturar el broker gratuito
-    if (millis() - lastMsg > 1000) {
-      for (int i = 0; i < numTargets; i++) {
-        auto target = ld2450.getTarget(i);
 
-        // El radar a veces da 0,0 si no hay presencia real
-        if (target.x != 0 || target.y != 0) {
-          float anguloRadianes = atan2((float)target.x, (float)target.y);
-          float anguloGrados = anguloRadianes * 180.0 / PI;
-          float distanciaTotal = sqrt(sq((float)target.x) + sq((float)target.y));
-          int zona = determinarZonaApp(target.x, target.y);
+    for (int i = 0; i < numTargets; i++) {
+      auto target = ld2450.getTarget(i);
 
-          String payload = "{";
-          payload += "\"id\":" + String(i) + ",";
-          payload += "\"x\":" + String(target.x) + ",";
-          payload += "\"y\":" + String(target.y) + ",";
-          payload += "\"ang\":" + String(anguloGrados, 1) + ",";
-          payload += "\"hum\":" + String(dht.getHumidity(), 1) + ",";
-          payload += "\"temp\":" + String(dht.getTemperature(), 1) + ",";
-          payload += "\"dist\":" + String(distanciaTotal, 1) + ",";
-          payload += "\"zona\":" + String(zona);
-          payload += "}";
+      // El radar a veces da 0,0 si no hay presencia real
+      if (target.x != 0 || target.y != 0) {
+        targetsRealesContados++;
+        float anguloRadianes = atan2((float)target.x, (float)target.y);
+        float anguloGrados = anguloRadianes * 180.0 / PI;
+        float distanciaTotal = sqrt(sq((float)target.x) + sq((float)target.y));
+        int zona = determinarZonaApp(target.x, target.y);
 
-          client.publish(miID, payload.c_str());
-          Serial.println("Publicado: " + payload);
-        }
+        String payload = "{";
+        payload += "\"id\":" + String(i) + ",";
+        payload += "\"x\":" + String(target.x) + ",";
+        payload += "\"y\":" + String(target.y) + ",";
+        payload += "\"ang\":" + String(anguloGrados, 1) + ",";
+        payload += "\"hum\":" + String(dht.getHumidity(), 1) + ",";
+        payload += "\"temp\":" + String(dht.getTemperature(), 1) + ",";
+        payload += "\"dist\":" + String(distanciaTotal, 1) + ",";
+        payload += "\"zona\":" + String(zona);
+        payload += "}";
+
+        client.publish(miID, payload.c_str());
+        Serial.println("Publicado: " + payload);
       }
-      lastMsg = millis();
     }
-    updateLcd(numTargets);
+    updateLcd(targetsRealesContados);
   }
 
-  delay(100);  // Pequeña pausa para estabilidad
+  delay(200);  // Pequeña pausa para estabilidad
 }

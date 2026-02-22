@@ -28,6 +28,12 @@
       padding-right: 16px;
       font-size: 14px;
     }
+
+    #display {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/p5@1.11.7/lib/p5.js"></script>
 </head>
@@ -36,7 +42,10 @@
   <p id="display"></p>
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script>
-    const targets = {}; 
+
+    const targets = {};
+    const easing = 0.15;   // Ajustado para 200ms (5Hz)
+    const maxDist = 8000;  // Rango de 8 metros
     const display = document.querySelector('p');
     const clientId = "js_client_" + Math.random().toString(16).substr(2, 8);
     const client = mqtt.connect("wss://broker.hivemq.com:8884/mqtt", {
@@ -48,8 +57,11 @@
     client.on("message", (_t, payload) => {
       try {
         const j = JSON.parse(payload.toString());
-      
         targets[j.id] = j;
+        if (targets[j.id].displayX === undefined) {
+          targets[j.id].displayX = j.x;
+          targets[j.id].displayY = j.y;
+        }
         display.innerHTML = Object.values(targets).map(t => `
           <div>
             <strong>ID ${t.id}:</strong> 
@@ -65,6 +77,100 @@
         console.log(j)
       } catch (e) { console.error("Error MQTT:", e); }
     });
+
+    // --- VISUALIZACIÓN RADAR ---
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      angleMode(DEGREES);
+    }
+
+    function draw() {
+      background(0); // Negro puro como en tu captura
+      
+      let centerX = width / 2;
+      // 1. Subimos un poco el sensor para que no esté pegado al borde
+      let centerY = height * 0.92; 
+      
+      // 2. Agrandamos el radio: ahora usa el 85% del alto de la pantalla
+      let radarRadius = height * 0.85; 
+      let scaleFactor = radarRadius / maxDist;
+
+      // Dibujar la zona de acción
+      drawRadarBase(centerX, centerY, radarRadius);
+
+      // Dibujar los objetivos
+      for (let id in targets) {
+        let t = targets[id];
+
+        if (t.displayX !== undefined) {
+          t.displayX = lerp(t.displayX, t.x, easing);
+          t.displayY = lerp(t.displayY, t.y, easing);
+
+          let sx = centerX + (t.displayX * scaleFactor);
+          let sy = centerY - (t.displayY * scaleFactor);
+
+          drawTarget(sx, sy, t);
+        }
+
+        if (millis() - t.lastSeen > 3000) delete targets[id];
+      }
+    }
+
+    function drawRadarBase(x, y, r) {
+      push();
+      translate(x, y);
+      
+      // Sombreado del arco
+      noStroke();
+      fill(0, 255, 65, 20); 
+      arc(0, 0, r * 2, r * 2, 210, 330, PIE);
+
+      // Rejilla de metros
+      stroke(0, 255, 65, 70);
+      noFill();
+      for (let i = 1; i <= 6; i++) {
+        let d = (r / 6) * i;
+        arc(0, 0, d * 2, d * 2, 210, 330);
+        
+        fill(0, 255, 65, 180);
+        noStroke();
+        textAlign(CENTER);
+        text(i + "m", 0, -d - 5);
+        noFill();
+        stroke(0, 255, 65, 70);
+      }
+
+      // Líneas de ángulo
+      stroke(0, 255, 65, 120);
+      line(0, 0, cos(210) * r, sin(210) * r);
+      line(0, 0, cos(330) * r, sin(330) * r);
+      line(0, 0, 0, -r); 
+      pop();
+    }
+
+    function drawTarget(x, y, data) {
+      push();
+      // Efecto de brillo
+      fill(0, 255, 255, 100);
+      noStroke();
+      ellipse(x, y, 20 + sin(frameCount * 10) * 5);
+      
+      // Punto sólido
+      fill(255);
+      ellipse(x, y, 8);
+
+      // Texto de datos sobre el punto
+      textAlign(CENTER);
+      fill(255);
+      textSize(12);
+      text(`ID:${data.id}\n${Math.round(data.dist)}mm`, x, y + 25);
+      pop();
+    }
+
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+    }
+
   </script>
 </body>
 
