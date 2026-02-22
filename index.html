@@ -33,33 +33,11 @@
 </head>
 
 <body>
-  <p>
-    <span id="temp">Temp: --</span>
-    <span id="hum">Hum: --</span>
-    <span id="dist">Dist: --</span>
-  </p>
-
+  <p id="display"></p>
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script>
-    // variables
-    let sensorDist = 150;
-    let sensorTemp = 22;
-    let sensorHum = 50;
-    let currentPaletteIndex = 0;
-    let palette;
-    let squares = [];
-    let maxSquares = 1;
-    let lastMessageTime = 0; // Para saber si estamos recibiendo datos
-    let mqttActive = false;
-    let palettes = [
-      ['#5f0f40', '#9a031e', '#fb8b24', '#e36414', '#0f4c5c'],
-      ['#009F40', '#ffe5d9', '#ffcad4', '#f4acb7', '#9d8189'],
-      ['#335c67', '#fff3b0', '#e09f3e', '#9e2a2b', '#540b0e'],
-      ['#CAA719', '#dde5b6', '#adc178', '#a98467', '#6c584c'],
-      ['#e63946', '#D4DAD1', '#a8dadc', '#457b9d', '#1d3557']
-    ];
-
-    const $ = id => document.getElementById(id);
+    const targets = {}; 
+    const display = document.querySelector('p');
     const clientId = "js_client_" + Math.random().toString(16).substr(2, 8);
     const client = mqtt.connect("wss://broker.hivemq.com:8884/mqtt", {
       clientId: clientId,
@@ -70,239 +48,23 @@
     client.on("message", (_t, payload) => {
       try {
         const j = JSON.parse(payload.toString());
-        if (j.temp != null) {
-          mqttActive = true;
-          lastMessageTime = millis();
-          $("temp").innerHTML = `<b>T:</b> ${j.temp.toFixed(1)}°C`;
-          sensorTemp = j.temp;
-          let tempCiclo = sensorTemp % 6;
-
-          // 2. Mapeamos ese valor de 0-5.99 al rango de índices de tus paletas (0-4)
-          // Usamos constrain para evitar errores si la temperatura es negativa
-          let index = floor(map(max(0, tempCiclo), 0, 6, 0, palettes.length));
-
-          // 3. Solo actualizamos si el índice ha cambiado
-          if (index !== currentPaletteIndex) {
-            currentPaletteIndex = index;
-            palette = palettes[currentPaletteIndex];
-            paletteIndex = 0; // Reiniciamos el orden interno de la paleta
-          }
-          console.log(currentPaletteIndex);
-        }
-        if (j.hum != null) {
-          $("hum").innerHTML = `<b>H:</b> ${j.hum.toFixed(1)}%`;
-          sensorHum = j.hum;
-          maxSquares = max(1, floor(sensorHum / 2));
-        }
-        if (j.dist != null) {
-          $("dist").innerHTML = `<b>D:</b> ${j.dist.toFixed(1)}cm`;
-          sensorDist = j.dist;
-        }
+      
+        targets[j.id] = j;
+        display.innerHTML = Object.values(targets).map(t => `
+          <div>
+            <strong>ID ${t.id}:</strong> 
+            <span>X:${t.x} Y:${t.y}</span>
+            <span>Distancia: ${t.dist}mm</span>
+            <span>Angulo: ${t.ang}m/s</span>
+            <span>Zona: ${t.zona} </span>
+            <span>Distancia: ${t.dist}</span>
+            <span>Grados: ${t.temp}°C</span>
+            <span>Humedad: ${t.hum} HR</span
+          </div>
+        `).join('');
+        console.log(j)
       } catch (e) { console.error("Error MQTT:", e); }
     });
-
-
-
-    function setup() {
-      createCanvas(windowWidth, windowHeight);
-      palette = palettes[currentPaletteIndex];
-      squares = [];
-      paletteIndex = 0;
-      for (let i = 0; i < maxSquares; i++) {
-        squares.push(createRandomSquare());
-      }
-    }
-
-    function windowResized() {
-      resizeCanvas(windowWidth, windowHeight);
-    }
-
-    function draw() {
-      if (millis() - lastMessageTime > 5000) {
-        mqttActive = false;
-        maxSquares = 1; // Solo un cuadro en reposo
-      }
-      background(230);
-      let now = millis();
-      let baseWeight = min(width, height) / 60;
-      strokeWeight(max(baseWeight, 10)); // Mínimo 3 píxeles de grosor
-
-      for (let i = squares.length - 1; i >= 0; i--) {
-        let sq = squares[i];
-        sq.update();
-        sq.draw();
-
-        // ELIMINACIÓN RÁPIDA: 1000ms (1 segundo)
-        if (sq.state === 'done' && now - sq.doneTime > 500) {
-          squares.splice(i, 1);
-        }
-      }
-      while (squares.length < maxSquares) {
-        squares.push(createRandomSquare());
-      }
-    }
-
-    function createRandomSquare() {
-      let baseUnit = min(width, height);
-      let size = map(sensorDist, 0, 310, baseUnit * 0.05, baseUnit * 0.5);
-      size = constrain(size, 20, baseUnit * 0.7);
-
-      let x, y;
-
-      if (!mqttActive) {
-        // ESTADO REPOSO: Centrado absoluto
-        x = width / 2 - size / 2;
-        y = height / 2 - size / 2;
-      } else {
-        // ESTADO ACTIVO: Posición aleatoria con margen
-        let margin = baseUnit * 0.05;
-        x = random(margin, width - size - margin);
-        y = random(margin, height - size - margin);
-      }
-
-      let speed = random(40, 80);
-      let color = palette[paletteIndex];
-      paletteIndex = (paletteIndex + 1) % palette.length;
-
-      return new ColoredAnimatedSquare(x, y, size, speed, color);
-    }
-
-    class AnimatedSquare {
-      constructor(x, y, size, speed) {
-        this.x = x;
-        this.y = y;
-        this.size = size;
-        this.speed = speed;
-        this.state = 'drawing';
-        this.strokeIndex = 0;
-        this.strokeProgress = 0;
-        this.lastUpdateTime = millis();
-        this.points = [];
-        this.generateSquigglyEdges();
-      }
-
-      generateSquigglyEdges() {
-        const squiggle = (x1, y1, x2, y2) => {
-          let pts = [];
-          let segments = 60; // Optimizado para velocidad/detalle
-          let amplitude = random(0.5, 5);
-          for (let i = 0; i <= segments; i++) {
-            let t = i / segments;
-            let x = lerp(x1, x2, t);
-            let y = lerp(y1, y2, t);
-            let offset = sin(t * PI * 4) * amplitude;
-            let angle = atan2(y2 - y1, x2 - x1) + HALF_PI;
-            pts.push(createVector(x + cos(angle) * offset, y + sin(angle) * offset));
-          }
-          return pts;
-        };
-
-        let corners = [
-          [this.x, this.y],
-          [this.x + this.size, this.y],
-          [this.x + this.size, this.y + this.size],
-          [this.x, this.y + this.size],
-          [this.x, this.y]
-        ];
-
-        for (let i = 0; i < 4; i++) {
-          this.points.push(squiggle(corners[i][0], corners[i][1], corners[i + 1][0], corners[i + 1][1]));
-        }
-      }
-
-      update() {
-        let now = millis();
-        let dt = (now - this.lastUpdateTime) / 500;
-        this.lastUpdateTime = now;
-
-        if (this.state === 'drawing') {
-          let currentStroke = this.points[this.strokeIndex];
-          let pointsPerSecond = this.speed; 
-          this.strokeProgress += pointsPerSecond * dt;
-
-          if (this.strokeProgress >= currentStroke.length) {
-            this.strokeIndex++;
-            this.strokeProgress = 0;
-            if (this.strokeIndex >= this.points.length) {
-              this.state = 'done';
-              this.doneTime = now;
-            }
-          }
-        }
-      }
-
-      draw() {
-        noFill();
-        for (let i = 0; i < this.strokeIndex; i++) {
-          this.drawSegment(this.points[i], this.points[i].length);
-        }
-        if (this.state === 'drawing') {
-          this.drawSegment(this.points[this.strokeIndex], floor(this.strokeProgress));
-        }
-      }
-
-      drawSegment(pts, limit) {
-        beginShape();
-        for (let i = 0; i < limit && i < pts.length; i++) {
-          vertex(pts[i].x, pts[i].y);
-        }
-        endShape();
-      }
-    }
-
-    class ColoredAnimatedSquare extends AnimatedSquare {
-      constructor(x, y, size, speed, col) {
-        super(x, y, size, speed);
-        this.baseColor = color(col);
-        this.doneTime = null;
-        this.currentAlpha = 255;
-      }
-
-      update() {
-        super.update();
-        if (this.state === 'done') {
-          let elapsed = millis() - this.doneTime;
-          // DESVANECIMIENTO EN 1 SEGUNDO (1000ms)
-          this.currentAlpha = map(elapsed, 0, 500, 255, 0);
-          this.currentAlpha = constrain(this.currentAlpha, 0, 255);
-        }
-      }
-
-      draw() {
-        let c = this.baseColor;
-        c.setAlpha(this.currentAlpha);
-        stroke(c);
-        super.draw();
-      }
-    }
-
-    let touchStartTime = 0;
-
-    function mousePressed() {
-      touchStartTime = millis();
-      return false; // Previene comportamientos por defecto
-    }
-
-    function mouseReleased() {
-      let duration = millis() - touchStartTime;
-
-      if (mouseButton === RIGHT) {
-        // CLIC DERECHO: Reinicia
-        setup();
-      } else {
-        // CLIC IZQUIERDO o TOQUE MÓVIL
-        if (duration > 800) {
-          // TOQUE LARGO (>0.8s): Reinicia
-          setup();
-        } else {
-          // TOQUE CORTO: Captura pantalla
-          let timestamp = year() + nf(month(), 2) + nf(day(), 2) + "-" + nf(hour(), 2) + nf(minute(), 2);
-          saveCanvas("JIESID-IoT-" + timestamp, "png");
-        }
-      }
-      return false;
-    }
-    document.oncontextmenu = () => false;
   </script>
 </body>
 

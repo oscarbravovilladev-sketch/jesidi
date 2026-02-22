@@ -212,12 +212,13 @@
 
       update() {
         let now = millis();
-        let dt = (now - this.lastUpdateTime) / 500;
+        let dt = (now - this.lastUpdateTime) / 1000;
         this.lastUpdateTime = now;
 
         if (this.state === 'drawing') {
           let currentStroke = this.points[this.strokeIndex];
-          this.strokeProgress += this.speed * dt;
+          let pointsPerSecond = this.speed; 
+          this.strokeProgress += pointsPerSecond * dt;
 
           if (this.strokeProgress >= currentStroke.length) {
             this.strokeIndex++;
