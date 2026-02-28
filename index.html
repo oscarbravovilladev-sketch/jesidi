@@ -13,6 +13,69 @@
       font-family: sans-serif;
     }
 
+    /* Botón de inicio obligatorio para navegadores */
+    #overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      color: #0f0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      cursor: pointer;
+      text-align: center;
+    }
+
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 10;
+      pointer-events: none;
+      transition: opacity 1s ease;
+      opacity: 0;
+    }
+
+    .radar-visible {
+      opacity: 1 !important;
+    }
+
+    .video-layer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity 1.5s ease-in-out;
+      z-index: 1;
+    }
+
+    .active-video {
+      opacity: 1 !important;
+    }
+
+
+
+
+    #display {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 11;
+      background: rgba(0, 0, 0, 0.6);
+      color: #0f0;
+      padding: 10px;
+      border-radius: 5px;
+      font-family: monospace;
+    }
+
     p {
       margin: 10px;
       position: absolute;
@@ -28,25 +91,57 @@
       padding-right: 16px;
       font-size: 14px;
     }
-
-    #display {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/p5@1.11.7/lib/p5.js"></script>
 </head>
 
 <body>
+  
+  <div id="overlay">
+    <h1>CLICK PARA INICIAR SISTEMA</h1>
+  </div>
+  <div id="videoContainer"></div>
   <p id="display"></p>
+
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script>
+    let systemStarted = false;
+
+    const display = document.querySelector('p');
+
+    const DISTANCIA_RADAR = 1500; // El radar aparece si alguien está a menos de 1.5m
+
+    const VIDEO_CONFIG = [
+      { min: 0, max: 500, src: null, showRadar: true },
+      { min: 501, max: 1000, src: 'videos/video__1.mp4', showRadar: false },
+      { min: 1001, max: 2000, src: 'videos/video__2.mp4', showRadar: false },
+      { min: 2001, max: 5000, src: 'videos/video__3.mp4', showRadar: false }
+    ];
 
     const targets = {};
     const easing = 0.15;   // Ajustado para 200ms (5Hz)
     const maxDist = 8000;  // Rango de 8 metros
-    const display = document.querySelector('p');
+
+    const videoElements = [];
+    let currentVideoIdx = -1;
+
+
+    // Crear videos
+    const container = document.getElementById('videoContainer');
+    VIDEO_CONFIG.forEach((conf, index) => {
+      if (conf.src) { // Solo si hay un archivo de video definido
+        const v = document.createElement('video');
+        v.src = conf.src;
+        v.loop = true; v.muted = true; v.playsInline = true;
+        v.className = 'video-layer';
+        v.id = 'video-' + index;
+        container.appendChild(v);
+        videoElements[index] = v; // Guardamos en la posición correspondiente
+      } else {
+        videoElements[index] = null; // Espacio vacío para el rango de solo radar
+      }
+    });
+
     const clientId = "js_client_" + Math.random().toString(16).substr(2, 8);
     const client = mqtt.connect("wss://broker.hivemq.com:8884/mqtt", {
       clientId: clientId,
@@ -57,11 +152,16 @@
     client.on("message", (_t, payload) => {
       try {
         const j = JSON.parse(payload.toString());
-        targets[j.id] = j;
-        if (targets[j.id].displayX === undefined) {
-          targets[j.id].displayX = j.x;
-          targets[j.id].displayY = j.y;
+        if (!targets[j.id]) {
+          j.displayX = j.x;
+          j.displayY = j.y;
+        } else {
+          // Mantenemos la posición visual anterior para el lerp
+          j.displayX = targets[j.id].displayX;
+          j.displayY = targets[j.id].displayY;
         }
+        j.lastSeen = millis();
+        targets[j.id] = j;
         display.innerHTML = Object.values(targets).map(t => `
           <div>
             <strong>ID ${t.id}:</strong> 
@@ -69,12 +169,10 @@
             <span>Distancia: ${t.dist}mm</span>
             <span>Angulo: ${t.ang}m/s</span>
             <span>Zona: ${t.zona} </span>
-            <span>Distancia: ${t.dist}</span>
             <span>Grados: ${t.temp}°C</span>
             <span>Humedad: ${t.hum} HR</span
           </div>
         `).join('');
-        console.log(j)
       } catch (e) { console.error("Error MQTT:", e); }
     });
 
@@ -86,14 +184,18 @@
 
     function draw() {
       background(0); // Negro puro como en tu captura
-      
+
       let centerX = width / 2;
       // 1. Subimos un poco el sensor para que no esté pegado al borde
-      let centerY = height * 0.92; 
-      
+      let centerY = height * 0.92;
+
       // 2. Agrandamos el radio: ahora usa el 85% del alto de la pantalla
-      let radarRadius = height * 0.85; 
+      let radarRadius = height * 0.85;
       let scaleFactor = radarRadius / maxDist;
+
+      // --- VARIABLES PARA VIDEOS ---
+      let closestDist = 99999;
+      let activeCount = 0;
 
       // Dibujar la zona de acción
       drawRadarBase(centerX, centerY, radarRadius);
@@ -102,27 +204,32 @@
       for (let id in targets) {
         let t = targets[id];
 
-        if (t.displayX !== undefined) {
-          t.displayX = lerp(t.displayX, t.x, easing);
-          t.displayY = lerp(t.displayY, t.y, easing);
+        // 1. Suavizado de movimiento
+        t.displayX = lerp(t.displayX, t.x, easing);
+        t.displayY = lerp(t.displayY, t.y, easing);
 
-          let sx = centerX + (t.displayX * scaleFactor);
-          let sy = centerY - (t.displayY * scaleFactor);
+        let sx = centerX + (t.displayX * scaleFactor);
+        let sy = centerY - (t.displayY * scaleFactor);
 
-          drawTarget(sx, sy, t);
-        }
+        drawTarget(sx, sy, t);
 
+        activeCount++;
+        if (t.dist < closestDist) closestDist = t.dist;
+
+        // 2. Limpieza de objetivos inactivos (3 segundos)
         if (millis() - t.lastSeen > 3000) delete targets[id];
       }
+      let finalDist = activeCount > 0 ? closestDist : 99999;
+      updateSystemLogic(finalDist);
     }
 
     function drawRadarBase(x, y, r) {
       push();
       translate(x, y);
-      
+
       // Sombreado del arco
       noStroke();
-      fill(0, 255, 65, 20); 
+      fill(0, 255, 65, 20);
       arc(0, 0, r * 2, r * 2, 210, 330, PIE);
 
       // Rejilla de metros
@@ -131,7 +238,7 @@
       for (let i = 1; i <= 6; i++) {
         let d = (r / 6) * i;
         arc(0, 0, d * 2, d * 2, 210, 330);
-        
+
         fill(0, 255, 65, 180);
         noStroke();
         textAlign(CENTER);
@@ -144,7 +251,7 @@
       stroke(0, 255, 65, 120);
       line(0, 0, cos(210) * r, sin(210) * r);
       line(0, 0, cos(330) * r, sin(330) * r);
-      line(0, 0, 0, -r); 
+      line(0, 0, 0, -r);
       pop();
     }
 
@@ -154,7 +261,7 @@
       fill(0, 255, 255, 100);
       noStroke();
       ellipse(x, y, 20 + sin(frameCount * 10) * 5);
-      
+
       // Punto sólido
       fill(255);
       ellipse(x, y, 8);
@@ -169,6 +276,53 @@
 
     function windowResized() {
       resizeCanvas(windowWidth, windowHeight);
+    }
+
+    document.getElementById('overlay').addEventListener('click', function () {
+      console.log("Sistema Iniciado");
+      this.style.display = 'none'; // Oculta el div negro
+
+      videoElements.forEach(v => {
+        if (v) {
+          v.play().catch(e => console.log("Error play:", e));
+        }
+      });
+
+      systemStarted = true;
+    });
+
+    function updateSystemLogic(d) {
+      if (!systemStarted) return;
+
+      let newIdx = VIDEO_CONFIG.findIndex(c => d >= c.min && d <= c.max);
+
+      if (newIdx !== -1 && newIdx !== currentVideoIdx) {
+        console.log("Cambiando a rango:", newIdx);
+
+        // 1. Manejar Videos
+        videoElements.forEach((v, idx) => {
+          if (v) {
+            if (idx === newIdx) {
+              v.classList.add('active-video');
+              v.play();
+            } else {
+              v.classList.remove('active-video');
+            }
+          }
+        });
+
+        // 2. Manejar Radar (Canvas)
+        const canvasElement = document.querySelector('canvas');
+        if (canvasElement) {
+          if (VIDEO_CONFIG[newIdx].showRadar) {
+            canvasElement.classList.add('radar-visible');
+          } else {
+            canvasElement.classList.remove('radar-visible');
+          }
+        }
+
+        currentVideoIdx = newIdx;
+      }
     }
 
   </script>
