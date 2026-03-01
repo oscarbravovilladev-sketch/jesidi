@@ -96,7 +96,7 @@
 </head>
 
 <body>
-  
+
   <div id="overlay">
     <h1>CLICK PARA INICIAR SISTEMA</h1>
   </div>
@@ -113,9 +113,9 @@
 
     const VIDEO_CONFIG = [
       { min: 0, max: 500, src: null, showRadar: true },
-      { min: 501, max: 1000, src: 'videos/video__1.mp4', showRadar: false },
-      { min: 1001, max: 2000, src: 'videos/video__2.mp4', showRadar: false },
-      { min: 2001, max: 5000, src: 'videos/video__3.mp4', showRadar: false }
+      { min: 501, max: 1500, src: 'videos/video__1.mp4', showRadar: false },
+      { min: 2000, max: 3000, src: 'videos/video__2.mp4', showRadar: false },
+      { min: 3001, max: 5000, src: 'videos/video__3.mp4', showRadar: false }
     ];
 
     const targets = {};
@@ -152,14 +152,20 @@
     client.on("message", (_t, payload) => {
       try {
         const j = JSON.parse(payload.toString());
+        
+        Object.keys(targets).forEach(id => {
+          if (id !== j.id.toString()) delete targets[id];
+        });
+
+        // 2. Lógica de suavizado (Lerp)
         if (!targets[j.id]) {
           j.displayX = j.x;
           j.displayY = j.y;
         } else {
-          // Mantenemos la posición visual anterior para el lerp
           j.displayX = targets[j.id].displayX;
           j.displayY = targets[j.id].displayY;
         }
+
         j.lastSeen = millis();
         targets[j.id] = j;
         display.innerHTML = Object.values(targets).map(t => `
@@ -279,12 +285,13 @@
     }
 
     document.getElementById('overlay').addEventListener('click', function () {
-      console.log("Sistema Iniciado");
-      this.style.display = 'none'; // Oculta el div negro
+      console.log("Sistema e Audio Iniciados");
+      this.style.display = 'none';
 
       videoElements.forEach(v => {
         if (v) {
-          v.play().catch(e => console.log("Error play:", e));
+          v.muted = true; // Doble seguridad: desmutear al hacer clic
+          v.play().catch(e => console.log("Error al reproducir con audio:", e));
         }
       });
 
@@ -297,16 +304,15 @@
       let newIdx = VIDEO_CONFIG.findIndex(c => d >= c.min && d <= c.max);
 
       if (newIdx !== -1 && newIdx !== currentVideoIdx) {
-        console.log("Cambiando a rango:", newIdx);
-
-        // 1. Manejar Videos
         videoElements.forEach((v, idx) => {
           if (v) {
             if (idx === newIdx) {
               v.classList.add('active-video');
+              v.muted = false; // <--- ACTIVA SONIDO DEL VIDEO VISIBLE
               v.play();
             } else {
               v.classList.remove('active-video');
+              v.muted = true;  // <--- SILENCIA LOS VIDEOS OCULTOS
             }
           }
         });
