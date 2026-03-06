@@ -95,18 +95,41 @@ void updateDht() {
   if (!isnan(h)) cachedHum = h;
 }
 
+unsigned long btnPressStart = 0;
+const long BTN_LONG_PRESS = 3000;  // 3 segundos para reset WiFi
+
+void checkWiFiResetButton() {
+  if (digitalRead(4) == LOW) {
+    if (btnPressStart == 0) btnPressStart = millis();
+    long elapsed = millis() - btnPressStart;
+    int secsLeft = (BTN_LONG_PRESS - elapsed) / 1000 + 1;
+    char buf[17];
+    snprintf(buf, 17, "Reset WiFi: %ds  ", secsLeft);
+    updateLcdStatus(buf);
+    if (elapsed >= BTN_LONG_PRESS) {
+      Serial.println(">>> RESET WIFI POR BOTÓN");
+      updateLcdStatus("WiFi: Reset...  ");
+      WiFiManager wm;
+      wm.resetSettings();
+      delay(1000);
+      ESP.restart();
+    }
+  } else {
+    if (btnPressStart > 0) {
+      // Soltó antes de tiempo, restaurar estado
+      updateLcdStatus(client.connected() ? "MQTT: OK        " : "MQTT: Error     ");
+    }
+    btnPressStart = 0;
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   delay(500);
   pinMode(4, INPUT_PULLUP);
 
   WiFiManager wm;
-  if (digitalRead(4) == LOW) {
-    Serial.println(">>> MODO CONFIGURACIÓN ACTIVADO");
-    wm.resetSettings();
-    wm.setConfigPortalTimeout(120);
-  }
-
+  wm.setConfigPortalTimeout(120);
   if (!wm.autoConnect("ESP32_JESIDI")) {
     Serial.println("Fallo conexión. Reiniciando...");
     updateLcdStatus("WiFi: Error     ");
@@ -144,6 +167,7 @@ void loop() {
   }
 
   updateDht();
+  checkWiFiResetButton();
 
   // Lógica del radar
   if (ld2450.update()) {

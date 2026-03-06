@@ -41,7 +41,7 @@
       padding: 10px;
       border-radius: 5px;
       font-family: monospace;
-      font-size: 14px;
+      font-size: 10px;
     }
 
     #sensor-info span {
@@ -75,7 +75,19 @@
       background: #333;
       border-radius: 4px;
       overflow: hidden;
+      position: relative;
     }
+
+    .track-bar .vol::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: -2px;
+      width: 1px;
+      height: 12px;
+      background: #888;
+    }
+
 
     .track-bar .vol-fill {
       height: 100%;
@@ -98,7 +110,7 @@
   <div id="sensor-info"></div>
 
   <div id="audio-ui">
-    <p id="zone-info" style="margin:0 0 8px 0;">Zona: Silencio</p>
+    <p id="zone-info" style="margin:0 0 8px 0;padding-left:45px;">Zona: Silencio</p>
     <div id="tracks-ui"></div>
   </div>
 
@@ -125,7 +137,7 @@ uniform vec2 iResolution;
 uniform float iTime;
 uniform vec3 uColor;       // color del track activo
 uniform float uDist;       // distancia normalizada 0-1
-uniform float uAngle;      // angulo del target en radianes
+uniform float uAngle;      // rotacion acumulada
 uniform float uTemp;       // temperatura normalizada 0-1
 uniform float uHum;        // humedad normalizada 0-1
 uniform vec2 uPos;         // posicion X,Y normalizada
@@ -158,7 +170,7 @@ void main() {
   float loops = 2.0 + uDist * 2.0;
 
   // Temperatura controla velocidad de animacion
-  float speed = 0.2 + uTemp * 0.6;
+  float speed = 0.08 + uTemp * 0.25;
 
   // Humedad controla grosor de lineas
   float thickness = 0.2 + uHum * 0.5;
@@ -197,14 +209,20 @@ void main() {
       [0.1, 0.7, 0.7]    // BARCA - cyan
     ];
 
-    const CROSSFADE = 200;
+    const CROSSFADE = 400;
+    // Orden aleatorio de tracks en cada carga
+    const trackOrder = [0, 1, 2, 3, 4, 5];
+    for (let i = trackOrder.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [trackOrder[i], trackOrder[j]] = [trackOrder[j], trackOrder[i]];
+    }
     const ZONES = [
-      { min: 210, max: 700, track: 0 },
-      { min: 710, max: 1200, track: 1 },
-      { min: 1210, max: 1700, track: 2 },
-      { min: 1710, max: 2200, track: 3 },
-      { min: 2210, max: 2700, track: 4 },
-      { min: 2710, max: 3200, track: 5 }
+      { min: 210, max: 700, track: trackOrder[0] },
+      { min: 710, max: 1200, track: trackOrder[1] },
+      { min: 1210, max: 1700, track: trackOrder[2] },
+      { min: 1710, max: 2200, track: trackOrder[3] },
+      { min: 2210, max: 2700, track: trackOrder[4] },
+      { min: 2710, max: 3200, track: trackOrder[5] }
     ];
 
     // --- ESTADO ---
@@ -213,11 +231,11 @@ void main() {
     const targetVolumes = new Array(AUDIOS.length).fill(0);
     // Suavizado de distancia para audio
     let smoothDist = -1;
-    const DIST_EMA = 0.12;  // 0=muy suave, 1=sin filtro
+    const DIST_EMA = 0.03;  // 0=muy suave, 1=sin filtro
     // Valores objetivo (se actualizan con MQTT)
     let targetColor = [0.3, 0.3, 0.3];
     let targetDist = 0;
-    let targetAngle = 0;
+    let targetRotSpeed = 0.002;  // velocidad base de rotacion
     let targetTemp = 0.5;
     let targetHum = 0.5;
     let targetPos = [0, 0];
@@ -225,6 +243,7 @@ void main() {
     let shaderColor = [0.3, 0.3, 0.3];
     let shaderDist = 0;
     let shaderAngle = 0;
+    let shaderRotSpeed = 0.002;
     let shaderTemp = 0.5;
     let shaderHum = 0.5;
     let shaderPos = [0, 0];
@@ -239,13 +258,14 @@ void main() {
       audioElements.push(a);
     });
 
-    // --- UI de tracks ---
+    // --- UI de tracks (en orden de zona) ---
     const tracksUI = document.getElementById('tracks-ui');
-    AUDIOS.forEach((src, i) => {
+    ZONES.forEach((z, zi) => {
+      const i = z.track;
       const div = document.createElement('div');
       div.className = 'track-bar';
       div.id = 'track-ui-' + i;
-      const name = src.split('/').pop().replace('.mp3', '');
+      const name = AUDIOS[i].split('/').pop().replace('.mp3', '');
       div.innerHTML = `
         <span class="track-name">${name}</span>
         <div class="vol"><div class="vol-fill" id="vol-fill-${i}" style="width:0%"></div></div>
@@ -286,7 +306,7 @@ void main() {
           updateAudio(smoothDist);
         }
         // Shader targets (se interpolan en draw)
-        if (j.ang != null) targetAngle = j.ang * Math.PI / 180.0;
+        if (j.ang != null) targetRotSpeed = 0.002 + Math.abs(j.ang) / 180.0 * 0.015;
         if (j.temp != null) targetTemp = Math.max(0, Math.min(1, j.temp / 40.0));
         if (j.hum != null) targetHum = Math.max(0, Math.min(1, j.hum / 100.0));
         if (j.x != null && j.y != null) {
@@ -306,17 +326,15 @@ void main() {
         if (distMm < z.min || distMm > z.max) continue;
         let vol = 1;
         activeZone = i;
-        if (distMm < z.min + CROSSFADE) {
+        // Fade in solo si hay zona anterior
+        if (i > 0 && distMm < z.min + CROSSFADE) {
           vol = (distMm - z.min) / CROSSFADE;
-          if (i > 0) {
-            targetVolumes[ZONES[i - 1].track] = 1 - vol;
-          }
+          targetVolumes[ZONES[i - 1].track] = 1 - vol;
         }
-        if (distMm > z.max - CROSSFADE) {
+        // Fade out solo si hay zona siguiente
+        if (i < ZONES.length - 1 && distMm > z.max - CROSSFADE) {
           vol = (z.max - distMm) / CROSSFADE;
-          if (i < ZONES.length - 1) {
-            targetVolumes[ZONES[i + 1].track] = 1 - vol;
-          }
+          targetVolumes[ZONES[i + 1].track] = 1 - vol;
         }
         targetVolumes[z.track] = Math.max(0, Math.min(1, vol));
         break;
@@ -341,9 +359,14 @@ void main() {
 
       targetDist = Math.max(0, Math.min(1, distMm / 3200));
 
-      // UI
+      // UI - mostrar el track con mayor volumen
+      let loudestTrack = -1;
+      let loudestVol = 0;
+      targetVolumes.forEach((v, i) => {
+        if (v > loudestVol) { loudestVol = v; loudestTrack = i; }
+      });
       document.getElementById('zone-info').textContent =
-        activeZone >= 0 ? 'Zona: ' + AUDIOS[ZONES[activeZone].track].split('/').pop().replace('.mp3', '') : 'Zona: Silencio';
+        loudestTrack >= 0 ? 'Zona: ' + AUDIOS[loudestTrack].split('/').pop().replace('.mp3', '') : 'Zona: Silencio';
 
       targetVolumes.forEach((v, i) => {
         const pct = Math.round(v * 100);
@@ -373,7 +396,8 @@ void main() {
       shaderColor[1] = lerpVal(shaderColor[1], targetColor[1], s);
       shaderColor[2] = lerpVal(shaderColor[2], targetColor[2], s);
       shaderDist = lerpVal(shaderDist, targetDist, s);
-      shaderAngle = lerpVal(shaderAngle, targetAngle, s);
+      shaderRotSpeed = lerpVal(shaderRotSpeed, targetRotSpeed, s);
+      shaderAngle += shaderRotSpeed;
       shaderTemp = lerpVal(shaderTemp, targetTemp, s);
       shaderHum = lerpVal(shaderHum, targetHum, s);
       shaderPos[0] = lerpVal(shaderPos[0], targetPos[0], s);
