@@ -45,7 +45,7 @@
     }
 
     #sensor-info span {
-      padding-right: 16px;
+      padding-right: 3px;
     }
 
     #audio-ui {
@@ -306,10 +306,10 @@ void main() {
         document.getElementById('sensor-info').innerHTML = `
           <div>
             <span>X:${j.x} Y:${j.y}</span>
-            <span>D: ${j.dist}mm</span>
-            <span>A: ${j.ang}°</span>
-            <span>T: ${j.temp}°C</span>
-            <span>H: ${j.hum} HR</span>
+            <span>D:${j.dist}mm</span>
+            <span>A:${j.ang}°</span>
+            <span>T:${j.temp}°C</span>
+            <span>H:${j.hum} HR</span>
           </div>
         `;
         if (systemStarted && j.dist != null) {
