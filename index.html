@@ -51,9 +51,18 @@
     #audio-ui {
       position: absolute;
       bottom: 20px;
-      left: 20px;
+      left: 50%;
+      transform: translateX(-50%);
       z-index: 11;
       text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+      text-align: center;
+    }
+
+    #tracks-ui {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-right: 60px;
     }
 
     .track-bar {
@@ -111,7 +120,7 @@
   <div id="sensor-info"></div>
 
   <div id="audio-ui">
-    <p id="zone-info" style="margin:0 0 8px 0;padding-left:45px;">Zona: Silencio</p>
+    <p id="zone-info" style="margin:0 0 8px 0;">Zona: Silencio</p>
     <div id="tracks-ui"></div>
   </div>
 
@@ -210,7 +219,7 @@ void main() {
       [0.1, 0.7, 0.7]    // BARCA - cyan
     ];
 
-    const CROSSFADE = 400;
+    const CROSSFADE = 300;
     // Orden aleatorio de tracks en cada carga
     const trackOrder = [0, 1, 2, 3, 4, 5];
     for (let i = trackOrder.length - 1; i > 0; i--) {
@@ -232,7 +241,7 @@ void main() {
     const targetVolumes = new Array(AUDIOS.length).fill(0);
     // Suavizado de distancia para audio
     let smoothDist = -1;
-    const DIST_EMA = 0.03;  // 0=muy suave, 1=sin filtro
+    const DIST_EMA = 0.2;  // 0=muy suave, 1=sin filtro
     // Valores objetivo (se actualizan con MQTT)
     let targetColor = [0.3, 0.3, 0.3];
     let targetDist = 0;
