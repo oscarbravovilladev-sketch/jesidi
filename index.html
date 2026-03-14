@@ -304,7 +304,7 @@ void main() {
     let currentImgIndex = -1; // indice de imagen activa
     let pendingImgTrack = -1; // track candidato a cambio de imagen
     let pendingImgCount = 0;  // mensajes consecutivos con ese track dominante
-    let currentViz = 0; // 0 = caleidoscopio, 1 = particulas
+    let currentViz = 1; // 0 = caleidoscopio, 1 = particulas
     // Particle flow system
     let particleGfx, imgGfx, noiseGfx;
     let particlesList = [];
@@ -507,11 +507,9 @@ void main() {
       if (!srcImg || srcImg.width === 0) return; // imagen aun no cargada
 
       // Escalar para cubrir todo el canvas (cover)
-      let ratioW = width / srcImg.width;
-      let ratioH = height / srcImg.height;
-      let sc = Math.max(ratioW, ratioH);
-      let iw = Math.ceil(srcImg.width * sc);
-      let ih = Math.ceil(srcImg.height * sc);
+      // Estirar al tamaño exacto de la pantalla (puede distorsionar)
+      let iw = width;
+      let ih = height;
 
       imgGfx.imageMode(CENTER);
       imgGfx.background(0);
@@ -559,6 +557,7 @@ void main() {
     }
 
     function draw() {
+      background(0); // evitar pantalla blanca tras resize/fullscreen
       // Interpolar todos los valores suavemente
       const s = LERP_SPEED;
       shaderColor[0] = lerpVal(shaderColor[0], targetColor[0], s);
@@ -663,8 +662,9 @@ void main() {
     }
 
     function windowResized() {
+      if (windowWidth === width && windowHeight === height) return;
       resizeCanvas(windowWidth, windowHeight);
-      imgGfx = null; // forzar recrear buffers al nuevo tamaño
+      imgGfx = null;
       initParticleBuffers(true);
     }
 
