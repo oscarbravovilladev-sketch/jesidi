@@ -316,7 +316,7 @@ void main() {
     const FADE_FRAMES = 50;            // frames de fade-in y fade-out
     const FLOW_SPEED_BASE = 3;         // velocidad base de flujo
     const FLOW_SPEED_MULT = 2;       // multiplicador de velocidad por distancia
-    const STROKE_BASE = 5;            // tamaño base de particula (px)
+    const STROKE_BASE = 6;            // tamaño base de particula (px)
     const STROKE_MULT = 1;            // multiplicador de tamaño por temperatura
     const BG_FADE_BASE = 2;            // alpha base del fondo (trail persistence)
     const BG_FADE_MULT = 1;           // multiplicador de fade por humedad
@@ -698,10 +698,10 @@ void main() {
         systemStarted = true;
         document.getElementById('viz-toggle').style.display = 'block';
         const el = document.documentElement;
-        /*
+        
         if (el.requestFullscreen) el.requestFullscreen();
         else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-        */
+        
       }
     });
 
