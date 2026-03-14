@@ -27,7 +27,14 @@ unsigned long lastDhtRead = 0;
 const long intervaloDHT = 2000;
 int dhtPin = 21;
 float distanciaSuavizada = -1;
-const float EMA_ALPHA = 0.15;
+float xSuavizado = 0;
+float ySuavizado = 0;
+float angSuavizado = 0;
+const float EMA_ALPHA = 0.12;
+const float EMA_POS = 0.15;       // suavizado para x, y, angulo
+const float MAX_JUMP = 400;       // mm maximo de salto permitido por frame
+unsigned long lastValidTarget = 0;
+const long TARGET_TIMEOUT = 500;  // ms sin target antes de considerar perdido
 float cachedTemp = 0;
 float cachedHum = 0;
 char mqttBuffer[160];
@@ -185,22 +192,43 @@ void loop() {
       }
     }
 
-    if (indiceMasCercano == -1) return;
+    if (indiceMasCercano == -1) {
+      // Sin target: seguir publicando ultima posicion conocida si no ha pasado mucho
+      if (distanciaSuavizada > 0 && millis() - lastValidTarget < TARGET_TIMEOUT) {
+        snprintf(mqttBuffer, sizeof(mqttBuffer),
+          "{\"id\":-1,\"x\":0,\"y\":0,\"ang\":0,\"hum\":%.1f,\"temp\":%.1f,\"dist\":%.1f}",
+          cachedHum, cachedTemp, distanciaSuavizada);
+        client.publish(miID, mqttBuffer);
+      }
+      return;
+    }
 
+    lastValidTarget = millis();
     auto target = ld2450.getTarget(indiceMasCercano);
     float distanciaReal = sqrt(menorDistSq);
     float anguloGrados = atan2((float)target.x, (float)target.y) * 180.0 / PI;
 
-    // Suavizado EMA
+    // Rechazar saltos bruscos (cambio de target o ruido)
+    if (distanciaSuavizada > 0 && abs(distanciaReal - distanciaSuavizada) > MAX_JUMP) {
+      distanciaReal = distanciaSuavizada;
+    }
+
+    // Suavizado EMA para todos los valores
     if (distanciaSuavizada < 0) {
       distanciaSuavizada = distanciaReal;
+      xSuavizado = (float)target.x;
+      ySuavizado = (float)target.y;
+      angSuavizado = anguloGrados;
     } else {
       distanciaSuavizada = EMA_ALPHA * distanciaReal + (1 - EMA_ALPHA) * distanciaSuavizada;
+      xSuavizado = EMA_POS * (float)target.x + (1 - EMA_POS) * xSuavizado;
+      ySuavizado = EMA_POS * (float)target.y + (1 - EMA_POS) * ySuavizado;
+      angSuavizado = EMA_POS * anguloGrados + (1 - EMA_POS) * angSuavizado;
     }
 
     snprintf(mqttBuffer, sizeof(mqttBuffer),
-      "{\"id\":%d,\"x\":%d,\"y\":%d,\"ang\":%.1f,\"hum\":%.1f,\"temp\":%.1f,\"dist\":%.1f}",
-      indiceMasCercano, target.x, target.y, anguloGrados,
+      "{\"id\":%d,\"x\":%.0f,\"y\":%.0f,\"ang\":%.1f,\"hum\":%.1f,\"temp\":%.1f,\"dist\":%.1f}",
+      indiceMasCercano, xSuavizado, ySuavizado, angSuavizado,
       cachedHum, cachedTemp, distanciaSuavizada);
 
     client.publish(miID, mqttBuffer);

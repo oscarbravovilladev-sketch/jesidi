@@ -279,7 +279,10 @@ void main() {
     const targetVolumes = new Array(AUDIOS.length).fill(0);
     // Suavizado de distancia para audio
     let smoothDist = -1;
-    const DIST_EMA = 0.08;  // 0=muy suave, 1=sin filtro
+    let lastRawDist = -1;
+    const DIST_EMA = 0.1;       // 0=muy suave, 1=sin filtro
+    const DIST_MAX_JUMP = 200;  // mm maximo de salto aceptado por mensaje
+    const VOL_SMOOTH = 0.12;    // suavizado de volumen (0=suave, 1=instantaneo)
     // Valores objetivo (se actualizan con MQTT)
     let targetColor = [0.3, 0.3, 0.3];
     let targetDist = 0;
@@ -371,10 +374,16 @@ void main() {
           </div>
         `;
         if (systemStarted && j.dist != null) {
+          let d = j.dist;
+          // Rechazar saltos bruscos del sensor
+          if (lastRawDist >= 0 && Math.abs(d - lastRawDist) > DIST_MAX_JUMP) {
+            d = lastRawDist; // ignorar este valor
+          }
+          lastRawDist = d;
           if (smoothDist < 0) {
-            smoothDist = j.dist;
+            smoothDist = d;
           } else {
-            smoothDist = DIST_EMA * j.dist + (1 - DIST_EMA) * smoothDist;
+            smoothDist = DIST_EMA * d + (1 - DIST_EMA) * smoothDist;
           }
           updateAudio(smoothDist);
         }
@@ -413,8 +422,11 @@ void main() {
         break;
       }
 
-      // Aplicar volumenes
-      audioElements.forEach((a, i) => { a.volume = targetVolumes[i]; });
+      // Aplicar volumenes con suavizado
+      audioElements.forEach((a, i) => {
+        a.volume += (targetVolumes[i] - a.volume) * VOL_SMOOTH;
+        if (a.volume < 0.005) a.volume = 0; // cortar ruido residual
+      });
 
       // Color del shader: mezcla ponderada por volumen de todos los tracks
       let r = 0, g = 0, b = 0, totalVol = 0;
