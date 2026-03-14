@@ -265,11 +265,11 @@ void main() {
       [trackOrder[i], trackOrder[j]] = [trackOrder[j], trackOrder[i]];
     }
     const ZONES = [
-      { min: 210, max: 700, track: trackOrder[0] },
-      { min: 710, max: 1200, track: trackOrder[1] },
-      { min: 1210, max: 1700, track: trackOrder[2] },
-      { min: 1710, max: 2200, track: trackOrder[3] },
-      { min: 2210, max: 2700, track: trackOrder[4] },
+      { min: 210, max: 710, track: trackOrder[0] },
+      { min: 710, max: 1210, track: trackOrder[1] },
+      { min: 1210, max: 1710, track: trackOrder[2] },
+      { min: 1710, max: 2210, track: trackOrder[3] },
+      { min: 2210, max: 2710, track: trackOrder[4] },
       { min: 2710, max: 3200, track: trackOrder[5] }
     ];
 
@@ -280,8 +280,8 @@ void main() {
     // Suavizado de distancia para audio
     let smoothDist = -1;
     let lastRawDist = -1;
-    const DIST_EMA = 0.1;       // 0=muy suave, 1=sin filtro
-    const DIST_MAX_JUMP = 200;  // mm maximo de salto aceptado por mensaje
+    const DIST_EMA = 0.25;      // 0=muy suave, 1=sin filtro (ESP32 ya suaviza)
+    const DIST_MAX_JUMP = 500;  // mm maximo de salto aceptado por mensaje
     const VOL_SMOOTH = 0.12;    // suavizado de volumen (0=suave, 1=instantaneo)
     // Valores objetivo (se actualizan con MQTT)
     let targetColor = [0.3, 0.3, 0.3];
@@ -316,7 +316,7 @@ void main() {
     const FADE_FRAMES = 50;            // frames de fade-in y fade-out
     const FLOW_SPEED_BASE = 3;         // velocidad base de flujo
     const FLOW_SPEED_MULT = 2;       // multiplicador de velocidad por distancia
-    const STROKE_BASE = 7;            // tamaño base de particula (px)
+    const STROKE_BASE = 5;            // tamaño base de particula (px)
     const STROKE_MULT = 1;            // multiplicador de tamaño por temperatura
     const BG_FADE_BASE = 2;            // alpha base del fondo (trail persistence)
     const BG_FADE_MULT = 1;           // multiplicador de fade por humedad
@@ -457,7 +457,7 @@ void main() {
       if (loudestTrack >= 0) {
         if (loudestTrack === pendingImgTrack) {
           pendingImgCount++;
-          if (pendingImgCount >= 8) { // 8 mensajes consecutivos para confirmar cambio
+          if (pendingImgCount >= 3) { // 3 mensajes consecutivos para confirmar cambio
             setParticleImage(loudestTrack);
           }
         } else {
