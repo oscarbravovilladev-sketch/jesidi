@@ -279,7 +279,7 @@ void main() {
     const targetVolumes = new Array(AUDIOS.length).fill(0);
     // Suavizado de distancia para audio
     let smoothDist = -1;
-    const DIST_EMA = 0.2;  // 0=muy suave, 1=sin filtro
+    const DIST_EMA = 0.08;  // 0=muy suave, 1=sin filtro
     // Valores objetivo (se actualizan con MQTT)
     let targetColor = [0.3, 0.3, 0.3];
     let targetDist = 0;
@@ -299,6 +299,8 @@ void main() {
     let theShader;
     let trackImages = [];    // p5.Image por track
     let currentImgIndex = -1; // indice de imagen activa
+    let pendingImgTrack = -1; // track candidato a cambio de imagen
+    let pendingImgCount = 0;  // mensajes consecutivos con ese track dominante
     let currentViz = 0; // 0 = caleidoscopio, 1 = particulas
     // Particle flow system
     let particleGfx, imgGfx, noiseGfx;
@@ -309,8 +311,8 @@ void main() {
     const NUM_PARTICLES = 3500;        // cantidad de particulas
     const PARTICLE_MAX_LIFE = 60;     // vida maxima en frames
     const FADE_FRAMES = 15;            // frames de fade-in y fade-out
-    const FLOW_SPEED_BASE = 2;       // velocidad base de flujo
-    const FLOW_SPEED_MULT = 2.5;       // multiplicador de velocidad por distancia
+    const FLOW_SPEED_BASE = 1;       // velocidad base de flujo
+    const FLOW_SPEED_MULT = 1.5;       // multiplicador de velocidad por distancia
     const STROKE_BASE = 2;            // tamaño base de particula (px)
     const STROKE_MULT = 3;            // multiplicador de tamaño por temperatura
     const BG_FADE_BASE = 2;            // alpha base del fondo (trail persistence)
@@ -439,8 +441,18 @@ void main() {
       document.getElementById('zone-info').textContent =
         loudestTrack >= 0 ? 'Zona: ' + AUDIOS[loudestTrack].split('/').pop().replace('.mp3', '') : 'Zona: Silencio';
 
-      // Cambiar imagen de particulas al track dominante
-      if (loudestTrack >= 0) setParticleImage(loudestTrack);
+      // Cambiar imagen con histeresis para evitar saltos bruscos
+      if (loudestTrack >= 0) {
+        if (loudestTrack === pendingImgTrack) {
+          pendingImgCount++;
+          if (pendingImgCount >= 8) { // 8 mensajes consecutivos para confirmar cambio
+            setParticleImage(loudestTrack);
+          }
+        } else {
+          pendingImgTrack = loudestTrack;
+          pendingImgCount = 1;
+        }
+      }
 
       targetVolumes.forEach((v, i) => {
         const pct = (v * 100).toFixed(1);
@@ -655,10 +667,10 @@ void main() {
         systemStarted = true;
         document.getElementById('viz-toggle').style.display = 'block';
         const el = document.documentElement;
-        /*
+        
         if (el.requestFullscreen) el.requestFullscreen();
         else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-        */
+        
       }
     });
 
