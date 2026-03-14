@@ -311,20 +311,20 @@ void main() {
     // =============================================
     // PARAMETROS AJUSTABLES DE PARTICULAS
     // =============================================
-    const NUM_PARTICLES = 3500;        // cantidad de particulas
-    const PARTICLE_MAX_LIFE = 60;     // vida maxima en frames
-    const FADE_FRAMES = 15;            // frames de fade-in y fade-out
-    const FLOW_SPEED_BASE = 1;       // velocidad base de flujo
-    const FLOW_SPEED_MULT = 1.5;       // multiplicador de velocidad por distancia
-    const STROKE_BASE = 2;            // tamaño base de particula (px)
-    const STROKE_MULT = 3;            // multiplicador de tamaño por temperatura
+    const NUM_PARTICLES = 1000;        // cantidad de particulas
+    const PARTICLE_MAX_LIFE = 200;     // vida maxima en frames
+    const FADE_FRAMES = 50;            // frames de fade-in y fade-out
+    const FLOW_SPEED_BASE = 3;         // velocidad base de flujo
+    const FLOW_SPEED_MULT = 2;       // multiplicador de velocidad por distancia
+    const STROKE_BASE = 4;            // tamaño base de particula (px)
+    const STROKE_MULT = 1;            // multiplicador de tamaño por temperatura
     const BG_FADE_BASE = 2;            // alpha base del fondo (trail persistence)
-    const BG_FADE_MULT = 2;           // multiplicador de fade por humedad
-    const MAX_DRIFT_BASE = 15;         // radio minimo de deriva (px)
-    const MAX_DRIFT_MULT = 25;         // radio extra de deriva por distancia
-    const FLOW_NOISE_SCALE = 0.005;    // escala del Perlin noise (menor = mas suave)
-    const HOME_PULL_STRENGTH = 0.08;   // fuerza de retorno al hogar
-    const COLOR_TINT = 0.05;            // mezcla con color del shader (0-1)
+    const BG_FADE_MULT = 1;           // multiplicador de fade por humedad
+    const MAX_DRIFT_BASE = 200;         // radio minimo de deriva (px)
+    const MAX_DRIFT_MULT = 1;         // radio extra de deriva por distancia
+    const FLOW_NOISE_SCALE = 0.001;    // escala del Perlin noise (menor = mas suave)
+    const HOME_PULL_STRENGTH = 0.001;   // fuerza de retorno al hogar
+    const COLOR_TINT = 0.01;            // mezcla con color del shader (0-1)
     // =============================================
 
     // --- CREAR AUDIO ELEMENTS ---
@@ -548,6 +548,7 @@ void main() {
       createCanvas(windowWidth, windowHeight, WEBGL);
       pixelDensity(1);
       noStroke();
+      frameRate(30);
       theShader = createShader(vertShader, fragShader);
       initParticleBuffers(true);
     }
@@ -592,48 +593,66 @@ void main() {
         let windY = shaderPos[1] * 0.3;
         let t = millis() / 1000.0;
 
-        particleGfx.background(0, fadeAlpha);
+        // Fade del fondo via pixels (mas rapido que background con alpha)
+        particleGfx.loadPixels();
+        let pxd = particleGfx.pixels;
+        let fadeInv = 255 - fadeAlpha;
+        for (let k = 0, len = pxd.length; k < len; k += 4) {
+          pxd[k]     = (pxd[k]     * fadeInv) >> 8;
+          pxd[k + 1] = (pxd[k + 1] * fadeInv) >> 8;
+          pxd[k + 2] = (pxd[k + 2] * fadeInv) >> 8;
+        }
+        particleGfx.updatePixels();
+
+        // Dibujar particulas con stroke/point (necesario para tamaño sw)
         particleGfx.strokeWeight(sw);
+        let tintR = shaderColor[0] * 255 * COLOR_TINT;
+        let tintG = shaderColor[1] * 255 * COLOR_TINT;
+        let tintB = shaderColor[2] * 255 * COLOR_TINT;
+        let oneMinusTint = 1 - COLOR_TINT;
 
         for (let i = 0; i < NUM_PARTICLES; i++) {
           let p = particlesList[i];
 
-          // Color: mezcla entre posicion actual (70%) y home (30%)
-          // Asi la particula siempre pinta colores fieles a la imagen
-          let colHere = getPixelFast(imgGfx, p.x, p.y);
-          let colHome = getPixelFast(imgGfx, p.hx, p.hy);
-          let cm = 0.7; // peso de posicion actual
-          let colR = colHere[0] * cm + colHome[0] * (1 - cm);
-          let colG = colHere[1] * cm + colHome[1] * (1 - cm);
-          let colB = colHere[2] * cm + colHome[2] * (1 - cm);
-          let brightness = (colR + colG + colB) / 3;
+          // Color de posicion actual (mas fiel a la imagen)
+          let col = getPixelFast(imgGfx, p.x, p.y);
+          let colR = col[0];
+          let colG = col[1];
+          let colB = col[2];
+          let brightness = (colR + colG + colB) * 0.333;
 
-          // Opacidad base por brillo de imagen
-          let alpha = map(brightness, 0, 50, 40, 220, true);
+          // Opacidad base por brillo
+          let alpha = brightness < 50 ? 40 + brightness * 3.6 : 220;
           // Fade-in / fade-out
           let age = PARTICLE_MAX_LIFE - p.life;
           if (age < FADE_FRAMES) alpha *= age / FADE_FRAMES;
           if (p.life < FADE_FRAMES) alpha *= p.life / FADE_FRAMES;
-          // Mezclar color con tinte del shader activo
-          let r = colR * (1 - COLOR_TINT) + shaderColor[0] * 255 * COLOR_TINT;
-          let g = colG * (1 - COLOR_TINT) + shaderColor[1] * 255 * COLOR_TINT;
-          let b = colB * (1 - COLOR_TINT) + shaderColor[2] * 255 * COLOR_TINT;
+
+          let r = colR * oneMinusTint + tintR;
+          let g = colG * oneMinusTint + tintG;
+          let b = colB * oneMinusTint + tintB;
 
           particleGfx.stroke(r, g, b, alpha);
           particleGfx.point(p.x, p.y);
 
-          // Flow field basado en Perlin noise
-          let a = noise(p.x * FLOW_NOISE_SCALE, p.y * FLOW_NOISE_SCALE, t * 0.08) * TWO_PI * 2;
+          // Flow field - noise solo cada 2 frames para la mitad de las particulas
+          let a;
+          if ((i & 1) === (frameCount & 1)) {
+            a = noise(p.x * FLOW_NOISE_SCALE, p.y * FLOW_NOISE_SCALE, t * 0.08) * TWO_PI * 2;
+            p.lastAngle = a;
+          } else {
+            a = p.lastAngle || 0;
+          }
           a += shaderAngle * 0.2;
           let fx = cos(a) * flowSpeed + windX;
           let fy = sin(a) * flowSpeed + windY;
 
-          // Fuerza de retorno al hogar: mas fuerte cuanto mas lejos
+          // Fuerza de retorno al hogar
           let dx = p.hx - p.x;
           let dy = p.hy - p.y;
           let dist = Math.sqrt(dx * dx + dy * dy);
           let maxDrift = MAX_DRIFT_BASE + shaderDist * MAX_DRIFT_MULT;
-          let homePull = map(dist, 0, maxDrift, 0, 0.8, true);
+          let homePull = dist > maxDrift ? 0.8 : dist / maxDrift * 0.8;
           fx += dx * homePull * HOME_PULL_STRENGTH;
           fy += dy * homePull * HOME_PULL_STRENGTH;
 
@@ -679,10 +698,10 @@ void main() {
         systemStarted = true;
         document.getElementById('viz-toggle').style.display = 'block';
         const el = document.documentElement;
-        
+        /*
         if (el.requestFullscreen) el.requestFullscreen();
         else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-        
+        */
       }
     });
 
