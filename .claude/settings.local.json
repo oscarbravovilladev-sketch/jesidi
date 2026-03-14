@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:openprocessing.org)"
+      "WebFetch(domain:openprocessing.org)",
+      "Bash(npx @anthropic-ai/claude-code-skills add https://github.com/sickn33/antigravity-awesome-skills --skill shader-programming-glsl 2>&1)"
     ]
   }
 }
