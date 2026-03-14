@@ -54,7 +54,7 @@
       left: 50%;
       transform: translateX(-50%);
       z-index: 11;
-      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+      text-shadow: 0 0 6px rgba(0, 0, 0, 1), 0 0 12px rgba(0, 0, 0, 0.9), 0 2px 20px rgba(0, 0, 0, 0.8);
       text-align: center;
     }
 
@@ -306,7 +306,7 @@ void main() {
     // =============================================
     // PARAMETROS AJUSTABLES DE PARTICULAS
     // =============================================
-    const NUM_PARTICLES = 5000;        // cantidad de particulas
+    const NUM_PARTICLES = 3500;        // cantidad de particulas
     const PARTICLE_MAX_LIFE = 60;     // vida maxima en frames
     const FADE_FRAMES = 15;            // frames de fade-in y fade-out
     const FLOW_SPEED_BASE = 2;       // velocidad base de flujo
@@ -466,7 +466,9 @@ void main() {
     }
 
     function initParticleBuffers(resetParticles) {
-      if (!imgGfx) {
+      // Recrear buffers si no existen o si el tamaño cambio
+      if (!imgGfx || imgGfx.width !== width || imgGfx.height !== height) {
+        if (imgGfx) { imgGfx.remove(); noiseGfx.remove(); particleGfx.remove(); }
         imgGfx = createGraphics(width, height);
         noiseGfx = createGraphics(width, height);
         particleGfx = createGraphics(width, height);
@@ -478,9 +480,14 @@ void main() {
 
       // Usar la imagen del track activo, o la primera por defecto
       let srcImg = trackImages[currentImgIndex >= 0 ? currentImgIndex : 0];
-      let sc = Math.max(width / srcImg.width, height / srcImg.height);
-      let iw = srcImg.width * sc;
-      let ih = srcImg.height * sc;
+      if (!srcImg || srcImg.width === 0) return; // imagen aun no cargada
+
+      // Escalar para cubrir todo el canvas (cover)
+      let ratioW = width / srcImg.width;
+      let ratioH = height / srcImg.height;
+      let sc = Math.max(ratioW, ratioH);
+      let iw = Math.ceil(srcImg.width * sc);
+      let ih = Math.ceil(srcImg.height * sc);
 
       imgGfx.imageMode(CENTER);
       imgGfx.background(0);
