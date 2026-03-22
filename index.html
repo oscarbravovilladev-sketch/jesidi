@@ -21,14 +21,26 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: #000;
-      color: #0f0;
+      background: #d7dade;
+      color: #ffffff;
       display: flex;
-      flex-direction: column;
       justify-content: center;
       align-items: center;
       z-index: 9999;
       cursor: pointer;
+    }
+
+    #overlay img {
+      max-width: 80%;
+      max-height: 80%;
+      object-fit: contain;
+    }
+
+    #overlay h1 {
+      position: absolute;
+      margin-top:-5px;
+      padding:0;
+      font-size:18px;
     }
 
     #sensor-info {
@@ -36,12 +48,12 @@
       top: 10px;
       left: 10px;
       z-index: 11;
-      background: rgba(0, 0, 0, 0.6);
-      color: #0f0;
+      color: rgb(69, 69, 69);
       padding: 10px;
       border-radius: 5px;
       font-family: monospace;
       font-size: 10px;
+      
     }
 
     #sensor-info span {
@@ -50,88 +62,64 @@
 
     #audio-ui {
       position: absolute;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
+      bottom: 0;
+      left: 0;
+      width: 100%;
       z-index: 11;
-      text-shadow: 0 0 6px rgba(0, 0, 0, 1), 0 0 12px rgba(0, 0, 0, 0.9), 0 2px 20px rgba(0, 0, 0, 0.8);
-      text-align: center;
-    }
-
-    #tracks-ui {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding-right: 60px;
-    }
-
-    .track-bar {
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin: 4px 0;
-      font-size: 14px;
-    }
-
-    .track-bar .track-name {
-      display: inline-block;
-      width: 80px;
-      text-align: right;
-    }
-
-    .track-bar .vol {
-      width: 120px;
-      height: 8px;
-      background: #333;
-      border-radius: 4px;
-      overflow: hidden;
-      position: relative;
-    }
-
-    .track-bar .vol::after {
-      content: '';
-      position: absolute;
-      left: 50%;
-      top: -2px;
-      width: 1px;
-      height: 12px;
-      background: #888;
-    }
-
-
-    .track-bar .vol-fill {
-      height: 100%;
-      background: #0f0;
-      transition: width 0.15s;
-    }
-
-    .track-bar .vol-val {
-      display: inline-block;
-      width: 40px;
-      text-align: right;
-    }
-
-    .active-track {
-      color: #0f0;
-    }
-
-    #viz-toggle {
-      position: fixed;
-      bottom: 20px;
-      left: 20px;
-      z-index: 12;
-      background: rgba(0, 0, 0, 0.6);
-      color: #0f0;
-      border: 1px solid #0f0;
-      padding: 8px 14px;
-      border-radius: 5px;
+      height: 36px;
+      padding: 0;
+      box-sizing: border-box;
       font-family: monospace;
-      font-size: 12px;
-      cursor: pointer;
-      display: none;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.8);
     }
-    #viz-toggle:hover {
-      background: rgba(0, 255, 0, 0.15);
+
+    .ui-name {
+      font-size: 11px;
+      white-space: nowrap;
+      padding: 0 12px;
+      min-width: 70px;
+      color: #eee;
+    }
+
+    .ui-name-left { text-align: right; }
+    .ui-name-right { text-align: left; }
+
+    .ui-bar-wrap {
+      flex: 1;
+      height: 4px;
+      background: rgba(255,255,255,0.08);
+    }
+
+    .ui-bar-wrap-left { border-radius: 2px 0 0 2px; margin-right: 1px; }
+    .ui-bar-wrap-right { border-radius: 0 2px 2px 0; margin-left: 1px; display: flex; justify-content: flex-end; }
+
+    .ui-bar-fill {
+      height: 100%;
+      background: #fff;
+      transition: width 0.15s;
+      width: 0;
+    }
+
+    .my-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+    }
+
+    #sensor-info, #fft-info, #audio-ui {
+      z-index: 11;
+    }
+    #p5-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 5;
+      pointer-events: none;
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/p5@1.11.7/lib/p5.js"></script>
@@ -139,95 +127,22 @@
 
 <body>
   <div id="overlay">
+    <img src="fondo.png" alt="">
     <h1>CLICK PARA INICIAR</h1>
   </div>
 
+  <canvas class="my-canvas"></canvas>
   <div id="sensor-info"></div>
-
   <div id="audio-ui">
-    <p id="zone-info" style="margin:0 0 8px 0;">Zona: Silencio</p>
-    <div id="tracks-ui"></div>
+    <span class="ui-name ui-name-left" id="ui-name-l"></span>
+    <div class="ui-bar-wrap ui-bar-wrap-left"><div class="ui-bar-fill" id="ui-bar-l"></div></div>
+    <div class="ui-bar-wrap ui-bar-wrap-right"><div class="ui-bar-fill" id="ui-bar-r"></div></div>
+    <span class="ui-name ui-name-right" id="ui-name-r"></span>
   </div>
-
-  <button id="viz-toggle">VIZ</button>
 
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script>
-    // --- SHADER ---
-    const vertShader = `#ifdef GL_ES
-precision highp float;
-#endif
-attribute vec3 aPosition;
-attribute vec2 aTexCoord;
-varying vec2 vTexCoord;
-void main() {
-  vTexCoord = aTexCoord;
-  vec4 positionVec4 = vec4(aPosition, 1.0);
-  positionVec4.xy = positionVec4.xy * 2.0 - 1.0;
-  gl_Position = positionVec4;
-}`;
-
-    const fragShader = `#ifdef GL_ES
-precision highp float;
-#endif
-uniform vec2 iResolution;
-uniform float iTime;
-uniform vec3 uColor;       // color del track activo
-uniform float uDist;       // distancia normalizada 0-1
-uniform float uAngle;      // rotacion acumulada
-uniform float uTemp;       // temperatura normalizada 0-1
-uniform float uHum;        // humedad normalizada 0-1
-uniform vec2 uPos;         // posicion X,Y normalizada
-varying vec2 vTexCoord;
-
-vec3 palette(float t, vec3 base){
-    return sin(vec3(0.5)) + cos(vec3(0.5)) * cos(6.28318 * (base * cos(t) + sin(base)));
-}
-
-// Rotacion 2D
-vec2 rot(vec2 p, float a){
-    float c = cos(a), s = sin(a);
-    return vec2(p.x*c - p.y*s, p.x*s + p.y*c);
-}
-
-void main() {
-  vec2 uv = vTexCoord * 2.0 - 1.0;
-  float scale = 1.0 + uDist * 2.0;
-  uv.x *= scale * iResolution.x / iResolution.y;
-  uv.y *= scale;
-
-  // Posicion X,Y del target desplaza el centro
-  uv += uPos * 0.3;
-
-  // Angulo rota el patron
-  uv = rot(uv, uAngle * 0.5);
-
-  vec2 uv0 = uv;
-  vec3 finalColor = vec3(0.0);
-  float loops = 2.0 + uDist * 2.0;
-
-  // Temperatura controla velocidad de animacion
-  float speed = 0.08 + uTemp * 0.25;
-
-  // Humedad controla grosor de lineas
-  float thickness = 0.2 + uHum * 0.5;
-
-  for (float i = 0.0; i < 4.0; i++) {
-    if (i >= loops) break;
-    uv = fract(uv * (1.2 + uDist * 0.5)) - 0.5;
-    float d = length(uv) * exp(-length(uv0));
-    vec3 col = palette(length(uv0) + i * 0.4 + iTime * speed, uColor);
-    d = sin(d * (6.0 + uDist * 4.0) + iTime * speed) / 8.0;
-    d = abs(d) / thickness;
-    d = pow(0.01 / tan(d), 1.2);
-    finalColor += col * d;
-  }
-
-  gl_FragColor = vec4(finalColor, 1.0);
-}`;
-
-
-    // --- CONFIGURACION DE AUDIOS E IMAGENES ---
+    // --- CONFIGURACION DE AUDIOS ---
     const AUDIOS = [
       'audios/OLAS.mp3',
       'audios/MEGAS.mp3',
@@ -235,26 +150,6 @@ void main() {
       'audios/GERBERE.mp3',
       'audios/ERDOGEN.mp3',
       'audios/BARCA.mp3'
-    ];
-
-    // Imagen por track (mismo orden que AUDIOS) - reemplazar con las reales
-    const IMAGES = [
-      'img/jesus_01.jpg',   // OLAS
-      'img/jesus_02.jpg',   // MEGAS
-      'img/jesus_03.jpg',   // HORN
-      'img/jesus_04.jpg',   // GERBERE
-      'img/jesus_05.jpg',   // ERDOGEN
-      'img/jesus_06.jpg'    // BARCA
-    ];
-
-    // Color por track (R, G, B normalizado 0-1)
-    const TRACK_COLORS = [
-      [0.2, 0.4, 0.8],   // OLAS - azul oceano
-      [0.8, 0.2, 0.5],   // MEGAS - magenta
-      [0.9, 0.6, 0.1],   // HORN - dorado
-      [0.3, 0.8, 0.3],   // GERBERE - verde
-      [0.7, 0.1, 0.1],   // ERDOGEN - rojo
-      [0.1, 0.7, 0.7]    // BARCA - cyan
     ];
 
     const CROSSFADE = 300;
@@ -277,55 +172,24 @@ void main() {
     let systemStarted = false;
     const audioElements = [];
     const targetVolumes = new Array(AUDIOS.length).fill(0);
-    // Suavizado de distancia para audio
-    let smoothDist = -1;
-    let lastRawDist = -1;
-    const DIST_EMA = 0.25;      // 0=muy suave, 1=sin filtro (ESP32 ya suaviza)
-    const DIST_MAX_JUMP = 500;  // mm maximo de salto aceptado por mensaje
-    const VOL_SMOOTH = 0.12;    // suavizado de volumen (0=suave, 1=instantaneo)
-    // Valores objetivo (se actualizan con MQTT)
-    let targetColor = [0.3, 0.3, 0.3];
-    let targetDist = 0;
-    let targetRotSpeed = 0.002;  // velocidad base de rotacion
-    let targetTemp = 0.5;
-    let targetHum = 0.5;
-    let targetPos = [0, 0];
-    // Valores actuales (lerp hacia objetivo)
-    let shaderColor = [0.3, 0.3, 0.3];
-    let shaderDist = 0;
-    let shaderAngle = 0;
-    let shaderRotSpeed = 0.002;
-    let shaderTemp = 0.5;
-    let shaderHum = 0.5;
-    let shaderPos = [0, 0];
-    const LERP_SPEED = 0.06;
-    let theShader;
-    let trackImages = [];    // p5.Image por track
-    let currentImgIndex = -1; // indice de imagen activa
-    let pendingImgTrack = -1; // track candidato a cambio de imagen
-    let pendingImgCount = 0;  // mensajes consecutivos con ese track dominante
-    let currentViz = 1; // 0 = caleidoscopio, 1 = particulas
-    // Particle flow system
-    let particleGfx, imgGfx, noiseGfx;
-    let particlesList = [];
-    // =============================================
-    // PARAMETROS AJUSTABLES DE PARTICULAS
-    // =============================================
-    const NUM_PARTICLES = 1000;        // cantidad de particulas
-    const PARTICLE_MAX_LIFE = 500;     // vida maxima en frames
-    const FADE_FRAMES = 50;            // frames de fade-in y fade-out
-    const FLOW_SPEED_BASE = 1.5;         // velocidad base de flujo
-    const FLOW_SPEED_MULT = 1;       // multiplicador de velocidad por distancia
-    const STROKE_BASE = 4;            // tamaño base de particula (px)
-    const STROKE_MULT = 1;            // multiplicador de tamaño por temperatura
-    const BG_FADE_BASE = 2;            // alpha base del fondo (trail persistence)
-    const BG_FADE_MULT = 1;           // multiplicador de fade por humedad
-    const MAX_DRIFT_BASE = 200;         // radio minimo de deriva (px)
-    const MAX_DRIFT_MULT = 1;         // radio extra de deriva por distancia
-    const FLOW_NOISE_SCALE = 0.002;    // escala del Perlin noise (menor = mas suave)
-    const HOME_PULL_STRENGTH = 0.00001;   // fuerza de retorno al hogar
-    const COLOR_TINT = 0.01;            // mezcla con color del shader (0-1)
-    // =============================================
+    const VOL_SMOOTH = 0.15;
+
+    // --- FFT ---
+    let audioCtx = null;
+    const analysers = [];       // AnalyserNode por track
+    const sources = [];         // MediaElementSource por track
+    let masterAnalyser = null;  // Analyser de la mezcla final
+    let fftData = null;         // Uint8Array con espectro completo
+    const FFT_SIZE = 256;       // bins de frecuencia (128 bandas utiles)
+    // Datos FFT extraidos (se actualizan cada frame)
+    const fftBands = {
+      bass: 0,      // 0-250 Hz (energia de graves)
+      mid: 0,       // 250-2000 Hz (energia de medios)
+      treble: 0,    // 2000-8000 Hz (energia de agudos)
+      energy: 0,    // energia total normalizada 0-1
+      peak: 0,      // frecuencia dominante en Hz
+      raw: null     // array completo de 128 bandas (0-255 cada una)
+    };
 
     // --- CREAR AUDIO ELEMENTS ---
     AUDIOS.forEach(src => {
@@ -335,21 +199,10 @@ void main() {
       audioElements.push(a);
     });
 
-    // --- UI de tracks (en orden de zona) ---
-    const tracksUI = document.getElementById('tracks-ui');
-    ZONES.forEach((z, zi) => {
-      const i = z.track;
-      const div = document.createElement('div');
-      div.className = 'track-bar';
-      div.id = 'track-ui-' + i;
-      const name = AUDIOS[i].split('/').pop().replace('.mp3', '');
-      div.innerHTML = `
-        <span class="track-name">${name}</span>
-        <div class="vol"><div class="vol-fill" id="vol-fill-${i}" style="width:0%"></div></div>
-        <span class="vol-val" id="vol-val-${i}">0%</span>
-      `;
-      tracksUI.appendChild(div);
-    });
+    // --- Helpers para nombres de track ---
+    function trackName(trackIdx) {
+      return AUDIOS[trackIdx].split('/').pop().replace('.mp3', '');
+    }
 
     // --- MQTT ---
     const clientId = "js_audio_" + Math.random().toString(16).substr(2, 8);
@@ -373,27 +226,11 @@ void main() {
             <span>H:${j.hum} HR</span>
           </div>
         `;
+        // Exponer datos del sensor para el shader
+        window.sensorData = { x: j.x, y: j.y, dist: j.dist, ang: j.ang, temp: j.temp, hum: j.hum };
+
         if (systemStarted && j.dist != null) {
-          let d = j.dist;
-          // Rechazar saltos bruscos del sensor
-          if (lastRawDist >= 0 && Math.abs(d - lastRawDist) > DIST_MAX_JUMP) {
-            d = lastRawDist; // ignorar este valor
-          }
-          lastRawDist = d;
-          if (smoothDist < 0) {
-            smoothDist = d;
-          } else {
-            smoothDist = DIST_EMA * d + (1 - DIST_EMA) * smoothDist;
-          }
-          updateAudio(smoothDist);
-        }
-        // Shader targets (se interpolan en draw)
-        if (j.ang != null) targetRotSpeed = 0.002 + Math.abs(j.ang) / 180.0 * 0.015;
-        if (j.temp != null) targetTemp = Math.max(0, Math.min(1, j.temp / 40.0));
-        if (j.hum != null) targetHum = Math.max(0, Math.min(1, j.hum / 100.0));
-        if (j.x != null && j.y != null) {
-          targetPos[0] = Math.max(-1, Math.min(1, j.x / 3000.0));
-          targetPos[1] = Math.max(-1, Math.min(1, j.y / 3000.0));
+          updateAudio(j.dist);
         }
       } catch (e) { console.error("Error MQTT:", e); }
     });
@@ -401,19 +238,15 @@ void main() {
     // --- LOGICA DE AUDIO ---
     function updateAudio(distMm) {
       targetVolumes.fill(0);
-      let activeZone = -1;
 
       for (let i = 0; i < ZONES.length; i++) {
         const z = ZONES[i];
         if (distMm < z.min || distMm > z.max) continue;
         let vol = 1;
-        activeZone = i;
-        // Fade in solo si hay zona anterior
         if (i > 0 && distMm < z.min + CROSSFADE) {
           vol = (distMm - z.min) / CROSSFADE;
           targetVolumes[ZONES[i - 1].track] = 1 - vol;
         }
-        // Fade out solo si hay zona siguiente
         if (i < ZONES.length - 1 && distMm > z.max - CROSSFADE) {
           vol = (z.max - distMm) / CROSSFADE;
           targetVolumes[ZONES[i + 1].track] = 1 - vol;
@@ -425,306 +258,334 @@ void main() {
       // Aplicar volumenes con suavizado
       audioElements.forEach((a, i) => {
         a.volume += (targetVolumes[i] - a.volume) * VOL_SMOOTH;
-        if (a.volume < 0.005) a.volume = 0; // cortar ruido residual
+        if (a.volume < 0.005) a.volume = 0;
       });
 
-      // Color del shader: mezcla ponderada por volumen de todos los tracks
-      let r = 0, g = 0, b = 0, totalVol = 0;
-      targetVolumes.forEach((v, i) => {
-        r += TRACK_COLORS[i][0] * v;
-        g += TRACK_COLORS[i][1] * v;
-        b += TRACK_COLORS[i][2] * v;
-        totalVol += v;
-      });
-      if (totalVol > 0) {
-        targetColor = [r / totalVol, g / totalVol, b / totalVol];
+      // UI — encontrar las 2 zonas activas (ordenadas por indice de zona)
+      let activeZones = [];
+      for (let zi = 0; zi < ZONES.length; zi++) {
+        const vol = targetVolumes[ZONES[zi].track];
+        if (vol > 0) activeZones.push({ zi, track: ZONES[zi].track, vol });
+      }
+
+      const nameL = document.getElementById('ui-name-l');
+      const nameR = document.getElementById('ui-name-r');
+      const barL = document.getElementById('ui-bar-l');
+      const barR = document.getElementById('ui-bar-r');
+
+      if (activeZones.length === 0) {
+        nameL.textContent = '';
+        nameR.textContent = '';
+        barL.style.width = '0';
+        barR.style.width = '0';
+      } else if (activeZones.length === 1) {
+        const a = activeZones[0];
+        nameL.textContent = trackName(a.track);
+        nameR.textContent = '';
+        barL.style.width = (a.vol * 100) + '%';
+        barR.style.width = '0';
       } else {
-        targetColor = [0.15, 0.15, 0.15];
+        const left = activeZones[0];
+        const right = activeZones[1];
+        nameL.textContent = trackName(left.track);
+        nameR.textContent = trackName(right.track);
+        barL.style.width = (left.vol * 100) + '%';
+        barR.style.width = (right.vol * 100) + '%';
       }
+    }
 
-      targetDist = Math.max(0, Math.min(1, distMm / 3200));
+    // --- FFT: inicializar Web Audio API ---
+    function initAudioFFT() {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-      // UI - mostrar el track con mayor volumen
-      let loudestTrack = -1;
-      let loudestVol = 0;
-      targetVolumes.forEach((v, i) => {
-        if (v > loudestVol) { loudestVol = v; loudestTrack = i; }
+      // Nodo de mezcla donde convergen todos los tracks
+      const merger = audioCtx.createGain();
+      merger.gain.value = 1;
+      merger.connect(audioCtx.destination);
+
+      // Conectar cada audio element a su analyser y al merger
+      audioElements.forEach(a => {
+        const src = audioCtx.createMediaElementSource(a);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = FFT_SIZE;
+        analyser.smoothingTimeConstant = 0.8;
+        src.connect(analyser);
+        analyser.connect(merger);
+        sources.push(src);
+        analysers.push(analyser);
       });
-      document.getElementById('zone-info').textContent =
-        loudestTrack >= 0 ? 'Zona: ' + AUDIOS[loudestTrack].split('/').pop().replace('.mp3', '') : 'Zona: Silencio';
 
-      // Cambiar imagen con histeresis para evitar saltos bruscos
-      if (loudestTrack >= 0) {
-        if (loudestTrack === pendingImgTrack) {
-          pendingImgCount++;
-          if (pendingImgCount >= 3) { // 3 mensajes consecutivos para confirmar cambio
-            setParticleImage(loudestTrack);
-          }
-        } else {
-          pendingImgTrack = loudestTrack;
-          pendingImgCount = 1;
-        }
+      // Analyser maestro en la mezcla final
+      masterAnalyser = audioCtx.createAnalyser();
+      masterAnalyser.fftSize = FFT_SIZE;
+      masterAnalyser.smoothingTimeConstant = 0.8;
+      merger.connect(masterAnalyser);
+
+      fftData = new Uint8Array(masterAnalyser.frequencyBinCount);
+      fftBands.raw = new Uint8Array(masterAnalyser.frequencyBinCount);
+    }
+
+    // --- FFT: extraer datos cada frame ---
+    function updateFFT() {
+      if (!masterAnalyser) return;
+      masterAnalyser.getByteFrequencyData(fftData);
+
+      const bins = fftData.length; // 128
+      const nyquist = audioCtx.sampleRate / 2; // tipicamente 22050 Hz
+      const hzPerBin = nyquist / bins;
+
+      // Acumular energia por banda
+      let bassSum = 0, bassCount = 0;
+      let midSum = 0, midCount = 0;
+      let trebleSum = 0, trebleCount = 0;
+      let totalSum = 0;
+      let peakVal = 0, peakBin = 0;
+
+      for (let i = 0; i < bins; i++) {
+        const v = fftData[i];
+        const hz = i * hzPerBin;
+        totalSum += v;
+
+        if (v > peakVal) { peakVal = v; peakBin = i; }
+
+        if (hz < 250) { bassSum += v; bassCount++; }
+        else if (hz < 2000) { midSum += v; midCount++; }
+        else if (hz < 8000) { trebleSum += v; trebleCount++; }
       }
 
-      targetVolumes.forEach((v, i) => {
-        const pct = (v * 100).toFixed(1);
-        document.getElementById('vol-fill-' + i).style.width = pct + '%';
-        document.getElementById('vol-val-' + i).textContent = pct + '%';
-        document.getElementById('track-ui-' + i).className =
-          v > 0 ? 'track-bar active-track' : 'track-bar';
-      });
+      fftBands.bass = bassCount > 0 ? (bassSum / bassCount) / 255 : 0;
+      fftBands.mid = midCount > 0 ? (midSum / midCount) / 255 : 0;
+      fftBands.treble = trebleCount > 0 ? (trebleSum / trebleCount) / 255 : 0;
+      fftBands.energy = (totalSum / bins) / 255;
+      fftBands.peak = peakBin * hzPerBin;
+      fftBands.raw.set(fftData);
     }
 
-    // --- P5.JS SHADER ---
-    function preload() {
-      IMAGES.forEach(src => {
-        trackImages.push(loadImage(src));
-      });
-    }
-
-    function getPixelFast(gfx, x, y) {
-      let ix = Math.min(Math.max(Math.floor(x), 0), gfx.width - 1);
-      let iy = Math.min(Math.max(Math.floor(y), 0), gfx.height - 1);
-      let idx = (iy * gfx.width + ix) * 4;
-      return [gfx.pixels[idx], gfx.pixels[idx + 1], gfx.pixels[idx + 2]];
-    }
-
-    function initParticleBuffers(resetParticles) {
-      // Recrear buffers si no existen o si el tamaño cambio
-      if (!imgGfx || imgGfx.width !== width || imgGfx.height !== height) {
-        if (imgGfx) { imgGfx.remove(); noiseGfx.remove(); particleGfx.remove(); }
-        imgGfx = createGraphics(width, height);
-        noiseGfx = createGraphics(width, height);
-        particleGfx = createGraphics(width, height);
-        imgGfx.pixelDensity(1);
-        noiseGfx.pixelDensity(1);
-        particleGfx.pixelDensity(1);
-        particleGfx.background(0);
-      }
-
-      // Usar la imagen del track activo, o la primera por defecto
-      let srcImg = trackImages[currentImgIndex >= 0 ? currentImgIndex : 0];
-      if (!srcImg || srcImg.width === 0) return; // imagen aun no cargada
-
-      // Escalar para cubrir todo el canvas (cover)
-      // Estirar al tamaño exacto de la pantalla (puede distorsionar)
-      let iw = width;
-      let ih = height;
-
-      imgGfx.imageMode(CENTER);
-      imgGfx.background(0);
-      imgGfx.image(srcImg, width / 2, height / 2, iw, ih);
-      imgGfx.loadPixels();
-
-      noiseGfx.imageMode(CENTER);
-      noiseGfx.background(0);
-      noiseGfx.image(srcImg, width / 2, height / 2, iw, ih);
-      noiseGfx.filter(GRAY);
-      noiseGfx.filter(BLUR, 6);
-      noiseGfx.loadPixels();
-
-      if (resetParticles || particlesList.length === 0) {
-        particlesList = [];
-        for (let i = 0; i < NUM_PARTICLES; i++) {
-          let hx = random(width);
-          let hy = random(height);
-          particlesList.push({
-            x: hx, y: hy,
-            hx: hx, hy: hy,
-            life: floor(random(PARTICLE_MAX_LIFE))
-          });
-        }
-      }
-    }
-
-    // Cambiar la imagen de particulas al cambiar de zona
-    function setParticleImage(trackIndex) {
-      if (trackIndex === currentImgIndex) return;
-      currentImgIndex = trackIndex;
-      if (imgGfx) initParticleBuffers(false); // actualizar buffers sin resetear particulas
-    }
-
-    function setup() {
-      createCanvas(windowWidth, windowHeight, WEBGL);
-      pixelDensity(1);
-      noStroke();
-      frameRate(30);
-      theShader = createShader(vertShader, fragShader);
-      initParticleBuffers(true);
-    }
-
-    function lerpVal(current, target, speed) {
-      return current + (target - current) * speed;
-    }
-
-    function draw() {
-      background(0); // evitar pantalla blanca tras resize/fullscreen
-      // Interpolar todos los valores suavemente
-      const s = LERP_SPEED;
-      shaderColor[0] = lerpVal(shaderColor[0], targetColor[0], s);
-      shaderColor[1] = lerpVal(shaderColor[1], targetColor[1], s);
-      shaderColor[2] = lerpVal(shaderColor[2], targetColor[2], s);
-      shaderDist = lerpVal(shaderDist, targetDist, s);
-      shaderRotSpeed = lerpVal(shaderRotSpeed, targetRotSpeed, s);
-      shaderAngle += shaderRotSpeed;
-      shaderTemp = lerpVal(shaderTemp, targetTemp, s);
-      shaderHum = lerpVal(shaderHum, targetHum, s);
-      shaderPos[0] = lerpVal(shaderPos[0], targetPos[0], s);
-      shaderPos[1] = lerpVal(shaderPos[1], targetPos[1], s);
-
-      if (currentViz === 0) {
-        shader(theShader);
-        theShader.setUniform("iResolution", [width, height]);
-        theShader.setUniform("iTime", millis() / 1000.0);
-        theShader.setUniform("uColor", shaderColor);
-        theShader.setUniform("uDist", shaderDist);
-        theShader.setUniform("uAngle", shaderAngle);
-        theShader.setUniform("uTemp", shaderTemp);
-        theShader.setUniform("uHum", shaderHum);
-        theShader.setUniform("uPos", shaderPos);
-      } else {
-        // Particle image visualization
-        // Las particulas nacen en su "hogar", se mueven con flow field sutil,
-        // y al morir renacen en su hogar para reconstruir la imagen continuamente
-        let flowSpeed = FLOW_SPEED_BASE + shaderDist * FLOW_SPEED_MULT;
-        let sw = STROKE_BASE + shaderTemp * STROKE_MULT;
-        let fadeAlpha = BG_FADE_BASE + (1 - shaderHum) * BG_FADE_MULT;
-        let windX = shaderPos[0] * 0.3;
-        let windY = shaderPos[1] * 0.3;
-        let t = millis() / 1000.0;
-
-        // Fade del fondo via pixels (mas rapido que background con alpha)
-        particleGfx.loadPixels();
-        let pxd = particleGfx.pixels;
-        let fadeInv = 255 - fadeAlpha;
-        for (let k = 0, len = pxd.length; k < len; k += 4) {
-          pxd[k]     = (pxd[k]     * fadeInv) >> 8;
-          pxd[k + 1] = (pxd[k + 1] * fadeInv) >> 8;
-          pxd[k + 2] = (pxd[k + 2] * fadeInv) >> 8;
-        }
-        particleGfx.updatePixels();
-
-        // Dibujar particulas con stroke/point (necesario para tamaño sw)
-        particleGfx.strokeWeight(sw);
-        let tintR = shaderColor[0] * 255 * COLOR_TINT;
-        let tintG = shaderColor[1] * 255 * COLOR_TINT;
-        let tintB = shaderColor[2] * 255 * COLOR_TINT;
-        let oneMinusTint = 1 - COLOR_TINT;
-
-        for (let i = 0; i < NUM_PARTICLES; i++) {
-          let p = particlesList[i];
-
-          // Color de posicion actual (mas fiel a la imagen)
-          let col = getPixelFast(imgGfx, p.x, p.y);
-          let colR = col[0];
-          let colG = col[1];
-          let colB = col[2];
-          let brightness = (colR + colG + colB) * 0.333;
-
-          // Opacidad base por brillo
-          let alpha = brightness < 50 ? 40 + brightness * 3.6 : 220;
-          // Fade-in / fade-out
-          let age = PARTICLE_MAX_LIFE - p.life;
-          if (age < FADE_FRAMES) alpha *= age / FADE_FRAMES;
-          if (p.life < FADE_FRAMES) alpha *= p.life / FADE_FRAMES;
-
-          let r = colR * oneMinusTint + tintR;
-          let g = colG * oneMinusTint + tintG;
-          let b = colB * oneMinusTint + tintB;
-
-          particleGfx.stroke(r, g, b, alpha);
-          particleGfx.point(p.x, p.y);
-
-          // Flow field - noise solo cada 2 frames para la mitad de las particulas
-          let a;
-          if ((i & 1) === (frameCount & 1)) {
-            a = noise(p.x * FLOW_NOISE_SCALE, p.y * FLOW_NOISE_SCALE, t * 0.08) * TWO_PI * 2;
-            p.lastAngle = a;
-          } else {
-            a = p.lastAngle || 0;
-          }
-          a += shaderAngle * 0.2;
-          let fx = cos(a) * flowSpeed + windX;
-          let fy = sin(a) * flowSpeed + windY;
-
-          // Fuerza de retorno al hogar
-          let dx = p.hx - p.x;
-          let dy = p.hy - p.y;
-          let dist = Math.sqrt(dx * dx + dy * dy);
-          let maxDrift = MAX_DRIFT_BASE + shaderDist * MAX_DRIFT_MULT;
-          let homePull = dist > maxDrift ? 0.8 : dist / maxDrift * 0.8;
-          fx += dx * homePull * HOME_PULL_STRENGTH;
-          fy += dy * homePull * HOME_PULL_STRENGTH;
-
-          p.x += fx;
-          p.y += fy;
-          p.life--;
-
-          // Al morir o salir del canvas: renacer en el hogar
-          if (p.life <= 0 || p.x < 0 || p.x > width || p.y < 0 || p.y > height) {
-            // Reasignar hogar con leve variacion para distribucion natural
-            p.hx = p.hx + random(-2, 2);
-            p.hy = p.hy + random(-2, 2);
-            p.hx = constrain(p.hx, 0, width - 1);
-            p.hy = constrain(p.hy, 0, height - 1);
-            p.x = p.hx;
-            p.y = p.hy;
-            p.life = floor(random(PARTICLE_MAX_LIFE * 0.5, PARTICLE_MAX_LIFE));
-          }
-        }
-
-        resetShader();
-        image(particleGfx, -width / 2, -height / 2, width, height);
-        return;
-      }
-      rect(-width / 2, -height / 2, width, height);
-    }
-
-    function windowResized() {
-      if (windowWidth === width && windowHeight === height) return;
-      resizeCanvas(windowWidth, windowHeight);
-      imgGfx = null;
-      initParticleBuffers(true);
-    }
+    // Exponer FFT para p5
+    window.fftBands = fftBands;
+    window.updateFFT = updateFFT;
 
     // --- INICIO ---
     document.getElementById('overlay').addEventListener('click', function () {
       if (!systemStarted) {
-        // Primera pulsacion: iniciar app y entrar en fullscreen
         this.style.display = 'none';
+        initAudioFFT();
         audioElements.forEach(a => {
           a.play().catch(e => console.log("Error play:", e));
         });
         systemStarted = true;
-        document.getElementById('viz-toggle').style.display = 'block';
-        const el = document.documentElement;
-        
-        if (el.requestFullscreen) el.requestFullscreen();
-        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-        
       }
     });
+  </script>
 
-    // Toggle visualizacion
-    document.getElementById('viz-toggle').addEventListener('click', function (e) {
-      e.stopPropagation();
-      currentViz = currentViz === 0 ? 1 : 0;
-      this.textContent = currentViz === 0 ? 'VIZ' : 'VIZ';
-    });
+  <script>
+    // =============================================
+    // PARAMETROS AJUSTABLES - FFT RINGS
+    // =============================================
+    const FFT_RINGS = {
+      NUM_RINGS: 27,              // cantidad de anillos
+      CENTER_Y_OFFSET: 0.01,    // desplazamiento vertical del centro (-1 a 1, negativo = arriba)
+      BASE_RADIUS: 0.1,         // radio base (proporcion del viewport)
+      RING_SPACING: 7.5,          // separacion entre anillos (px)
+      ROTATION_SPEED: 0.17,       // velocidad de rotacion
+      ALPHA_BASE: 100,            // opacidad base
+      ALPHA_FFT_MULT: 80,        // multiplicador de opacidad por energia
+      ALPHA_DECAY: 3,            // reduccion de opacidad por capa
+      STROKE_BASE: 2,            // grosor base (px)
+      STROKE_DECAY: 0.03,        // reduccion de grosor por capa
+      AMP_BASE: 100,          // amplitud base de deformacion FFT
+      AMP_FFT_MULT: 10,         // amplitud extra por energia
+    };
+    // =============================================
 
-    // Toggle fullscreen al hacer click en el canvas
-    document.addEventListener('click', function (e) {
-      if (!systemStarted) return;
-      if (e.target.tagName === 'CANVAS') {
-        if (document.fullscreenElement || document.webkitFullscreenElement) {
-          if (document.exitFullscreen) document.exitFullscreen();
-          else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-        } else {
-          const el = document.documentElement;
-          if (el.requestFullscreen) el.requestFullscreen();
-          else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    // --- P5 FFT Lines (instance mode) ---
+    const fftViz = (p) => {
+      p.setup = () => {
+        const c = p.createCanvas(p.windowWidth, p.windowHeight);
+        c.id('p5-canvas');
+        p.frameRate(30);
+      };
+
+      p.draw = () => {
+        p.clear();
+        if (window.updateFFT) window.updateFFT();
+        const bands = window.fftBands;
+        if (!bands || !bands.raw) return;
+
+        const R = FFT_RINGS;
+        const raw = bands.raw;
+        const bins = raw.length;
+        const t = p.millis() / 1000;
+        const cx = p.width / 2;
+        const cy = p.height / 2 + p.height * R.CENTER_Y_OFFSET;
+        const baseR = p.min(p.width, p.height) * R.BASE_RADIUS;
+
+        p.noFill();
+
+        for (let layer = 0; layer < R.NUM_RINGS; layer++) {
+          const rOffset = baseR + layer * R.RING_SPACING;
+          const phase = layer * p.TWO_PI / R.NUM_RINGS + t * R.ROTATION_SPEED * (layer % 2 === 0 ? 1 : -1);
+          const alpha = R.ALPHA_BASE + bands.energy * R.ALPHA_FFT_MULT - layer * R.ALPHA_DECAY;
+
+          p.stroke(255, alpha);
+          p.strokeWeight(R.STROKE_BASE - layer * R.STROKE_DECAY);
+
+          p.beginShape();
+          for (let i = 0; i <= bins; i++) {
+            const idx = i % bins;
+            const angle = p.map(i, 0, bins, 0, p.TWO_PI) + phase;
+            const amp = raw[idx] / 255;
+            const r = rOffset + amp * (R.AMP_BASE + bands.energy * R.AMP_FFT_MULT);
+            p.curveVertex(cx + p.cos(angle) * r, cy + p.sin(angle) * r);
+          }
+          for (let i = 0; i < 3; i++) {
+            const angle = p.map(i, 0, bins, 0, p.TWO_PI) + phase;
+            const amp = raw[i] / 255;
+            const r = rOffset + amp * (R.AMP_BASE + bands.energy * R.AMP_FFT_MULT);
+            p.curveVertex(cx + p.cos(angle) * r, cy + p.sin(angle) * r);
+          }
+          p.endShape();
         }
+      };
+
+      p.windowResized = () => {
+        p.resizeCanvas(p.windowWidth, p.windowHeight);
+      };
+    };
+
+    new p5(fftViz);
+  </script>
+
+  <script>
+    // =============================================
+    // PARAMETROS AJUSTABLES - SHADER TORUS
+    // =============================================
+    const SHADER_PARAMS = {
+      CENTER_Y_OFFSET: 0.0,    // desplazamiento vertical (-1 arriba, 1 abajo)
+      CENTER_X_OFFSET: 0.0,      // desplazamiento horizontal (-1 izq, 1 der)
+      TORUS_SCALE: 0.6,          // escala base del torus
+      TORUS_THICKNESS: 0.2,      // grosor del anillo del torus
+      SMALL_SPHERE_SIZE: 0.1,    // tamaño de la esfera orbitante
+      BLEND_AMOUNT: 0.3,         // blend entre torus y esfera
+      NOISE_SPEED: 0.2,          // velocidad de animacion del noise
+      MOBILE_SCALE_MIN: 0.37,    // escala minima en movil
+      MOBILE_SCALE_FACTOR: 0.35, // factor de escala por aspect ratio
+      // Orbita circular de la esfera pequeña
+      ORBIT_RADIUS: 0.1,        // radio base de la orbita (distancia minima al centro)
+      ORBIT_SPEED: 0.2,          // velocidad de rotacion (rad/s)
+      ORBIT_FFT_PUSH: 1,       // cuanto se aleja la esfera con energia FFT
+      // Color
+      COLOR_RANGE: 0.2,           // amplitud del color (menor = mas blanco, 0-1)
+      COLOR_BASE: 0.5,           // base del color (mayor = mas blanco, 0-1)
+      COLOR_POW: 2,               // exponente de contraste (menor = mas blanco, 1-8)
+    };
+    // =============================================
+  </script>
+
+  <script type="module">
+    import {sculptToMinimalRenderer} from 'https://unpkg.com/shader-park-core/dist/shader-park-core.esm.js';
+
+    const S = SHADER_PARAMS;
+
+    const spCode = `
+      setMaxIterations(8);
+      let click = input();
+      let buttonHover = input();
+      let circX = input();
+      let circY = input();
+      let sScale = input();
+      let oX = input();
+      let oY = input();
+      let tScale = input();
+      let tThick = input();
+      let sphSize = input();
+      let blendAmt = input();
+      let nSpeed = input();
+      let cRange = input();
+      let cBase = input();
+      let cPow = input();
+      let offset = .1;
+      function fbm(p) {
+        return vec3(
+          noise(p),
+          noise(p+offset),
+          noise(p+offset*2),
+        )
       }
+
+      let s = getRayDirection();
+      let n = sin(fbm(s+vec3(0, 0, -time*nSpeed))*2)*cRange+cBase;
+      n = pow(n, vec3(cPow));
+      color(n)
+      let scale = (tScale+n.x*.05) * sScale;
+      displace(oX, oY, 0)
+      shape(() => {
+          rotateX(PI/2);
+          rotateX(circX* click)
+          rotateZ(-1*circY* click)
+          torus(scale, tThick * sScale)
+          reset();
+          mixGeo(click)
+          sphere(scale);
+      })()
+      blend(blendAmt)
+      displace(circX*2, circY, 0)
+      sphere(sphSize * sScale)
+    `;
+
+    let canvas = document.querySelector('.my-canvas');
+    let state = {
+      buttonHover: 0.0,
+      currButtonHover: 0.0,
+      click: 0.0,
+      currClick: 0.0,
+      circX: 0.0,
+      circY: 0.0
+    };
+
+    canvas.addEventListener('mouseover', () => state.buttonHover = 5, false);
+    canvas.addEventListener('mouseout', () => state.buttonHover = 0.0, false);
+    canvas.addEventListener('mousedown', () => state.click = 1.0, false);
+    canvas.addEventListener('mouseup', () => state.click = 0.0, false);
+
+    sculptToMinimalRenderer(canvas, spCode, () => {
+      const sd = window.sensorData;
+      if (sd && sd.dist != null) {
+        state.click = Math.max(0, Math.min(1, 1 - sd.dist / 3200));
+        state.buttonHover = (sd.temp || 20) / 40 * 5;
+      }
+
+      // Orbita circular con radio modulado por FFT
+      const t = performance.now() / 1000;
+      const bands = window.fftBands;
+      const energy = bands ? bands.energy : 0;
+      const radius = S.ORBIT_RADIUS + energy * S.ORBIT_FFT_PUSH;
+      state.circX = Math.cos(t * S.ORBIT_SPEED) * radius;
+      state.circY = Math.sin(t * S.ORBIT_SPEED) * radius;
+
+      state.currButtonHover = state.currButtonHover * .999 + state.buttonHover * .001;
+      state.currClick = state.currClick * .92 + state.click * .08;
+
+      const aspect = canvas.clientWidth / canvas.clientHeight;
+      const sScale = aspect < 1 ? S.MOBILE_SCALE_MIN + aspect * S.MOBILE_SCALE_FACTOR : 1.0;
+
+      return {
+        'buttonHover': state.currButtonHover,
+        'click': state.currClick,
+        'circX': state.circX,
+        'circY': state.circY,
+        'sScale': sScale,
+        'oX': S.CENTER_X_OFFSET,
+        'oY': S.CENTER_Y_OFFSET,
+        'tScale': S.TORUS_SCALE,
+        'tThick': S.TORUS_THICKNESS,
+        'sphSize': S.SMALL_SPHERE_SIZE,
+        'blendAmt': S.BLEND_AMOUNT,
+        'nSpeed': S.NOISE_SPEED,
+        'cRange': S.COLOR_RANGE,
+        'cBase': S.COLOR_BASE,
+        'cPow': S.COLOR_POW,
+      };
     });
   </script>
 </body>
