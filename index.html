@@ -395,11 +395,34 @@
       STROKE_DECAY: 0.03,        // reduccion de grosor por capa
       AMP_BASE: 50,          // amplitud base de deformacion FFT
       AMP_FFT_MULT: 5,         // amplitud extra por energia
+      SMOOTH_PASSES: 3,          // pasadas de suavizado espacial (mas = mas suave)
+      SMOOTH_TEMPORAL: 0.3,      // suavizado temporal entre frames (0-1, menor = mas suave)
     };
     // =============================================
 
     // --- P5 FFT Lines (instance mode) ---
     const fftViz = (p) => {
+      let smoothedFFT = null; // buffer para suavizado temporal
+
+      // Suavizado espacial: moving average circular
+      function smoothSpatial(arr, passes) {
+        let src = arr;
+        let dst = new Float32Array(arr.length);
+        for (let pass = 0; pass < passes; pass++) {
+          for (let i = 0; i < src.length; i++) {
+            const prev = src[(i - 1 + src.length) % src.length];
+            const curr = src[i];
+            const next = src[(i + 1) % src.length];
+            dst[i] = prev * 0.25 + curr * 0.5 + next * 0.25;
+          }
+          // Intercambiar buffers
+          const tmp = src;
+          src = dst;
+          dst = (pass === 0) ? new Float32Array(arr.length) : tmp;
+        }
+        return src;
+      }
+
       p.setup = () => {
         const c = p.createCanvas(p.windowWidth, p.windowHeight);
         c.id('p5-canvas');
@@ -415,6 +438,18 @@
         const R = FFT_RINGS;
         const raw = bands.raw;
         const bins = raw.length;
+
+        // Inicializar buffer de suavizado temporal
+        if (!smoothedFFT) smoothedFFT = new Float32Array(bins);
+
+        // Suavizado temporal: interpolar entre frame anterior y actual
+        for (let i = 0; i < bins; i++) {
+          smoothedFFT[i] += (raw[i] - smoothedFFT[i]) * R.SMOOTH_TEMPORAL;
+        }
+
+        // Suavizado espacial
+        const smooth = smoothSpatial(smoothedFFT, R.SMOOTH_PASSES);
+
         const t = p.millis() / 1000;
         const cx = p.width / 2;
         const cy = p.height / 2 + p.height * R.CENTER_Y_OFFSET;
@@ -434,13 +469,13 @@
           for (let i = 0; i <= bins; i++) {
             const idx = i % bins;
             const angle = p.map(i, 0, bins, 0, p.TWO_PI) + phase;
-            const amp = raw[idx] / 255;
+            const amp = smooth[idx] / 255;
             const r = rOffset + amp * (R.AMP_BASE + bands.energy * R.AMP_FFT_MULT);
             p.curveVertex(cx + p.cos(angle) * r, cy + p.sin(angle) * r);
           }
           for (let i = 0; i < 3; i++) {
             const angle = p.map(i, 0, bins, 0, p.TWO_PI) + phase;
-            const amp = raw[i] / 255;
+            const amp = smooth[i] / 255;
             const r = rOffset + amp * (R.AMP_BASE + bands.energy * R.AMP_FFT_MULT);
             p.curveVertex(cx + p.cos(angle) * r, cy + p.sin(angle) * r);
           }
