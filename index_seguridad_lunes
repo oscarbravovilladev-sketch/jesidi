@@ -129,7 +129,7 @@
       Object.defineProperty(window, 'devicePixelRatio', { get: () => 1 });
     }
   </script>
-  <script src="https://cdn.jsdelivr.net/npm/p5@1.11.7/lib/p5.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.11.7/lib/p5.js"></script>
 </head>
 
 <body>
@@ -139,15 +139,7 @@
   </div>
 
   <canvas class="my-canvas"></canvas>
-  <div id="sensor-info">
-    <div>
-      <span id="s-xy"></span>
-      <span id="s-dist"></span>
-      <span id="s-ang"></span>
-      <span id="s-temp"></span>
-      <span id="s-hum"></span>
-    </div>
-  </div>
+  <div id="sensor-info"></div>
   <div id="audio-ui">
     <span class="ui-name ui-name-left" id="ui-name-l"></span>
     <div class="ui-bar-wrap ui-bar-wrap-left"><div class="ui-bar-fill" id="ui-bar-l"></div></div>
@@ -191,6 +183,7 @@
 
     // --- FFT ---
     let audioCtx = null;
+    const analysers = [];       // AnalyserNode por track
     const sources = [];         // MediaElementSource por track
     let masterAnalyser = null;  // Analyser de la mezcla final
     let fftData = null;         // Uint8Array con espectro completo
@@ -231,11 +224,15 @@
       try {
         const j = JSON.parse(payload.toString());
 
-        document.getElementById('s-xy').textContent = 'X:' + j.x + ' Y:' + j.y;
-        document.getElementById('s-dist').textContent = 'D:' + j.dist + 'mm';
-        document.getElementById('s-ang').textContent = 'A:' + j.ang + '°';
-        document.getElementById('s-temp').textContent = 'T:' + j.temp + '°C';
-        document.getElementById('s-hum').textContent = 'H:' + j.hum + ' HR';
+        document.getElementById('sensor-info').innerHTML = `
+          <div>
+            <span>X:${j.x} Y:${j.y}</span>
+            <span>D:${j.dist}mm</span>
+            <span>A:${j.ang}°</span>
+            <span>T:${j.temp}°C</span>
+            <span>H:${j.hum} HR</span>
+          </div>
+        `;
         // Exponer datos del sensor para el shader
         window.sensorData = { x: j.x, y: j.y, dist: j.dist, ang: j.ang, temp: j.temp, hum: j.hum };
 
@@ -313,11 +310,16 @@
       merger.gain.value = 1;
       merger.connect(audioCtx.destination);
 
-      // Conectar cada audio element directo al merger (sin analyser individual)
+      // Conectar cada audio element a su analyser y al merger
       audioElements.forEach(a => {
         const src = audioCtx.createMediaElementSource(a);
-        src.connect(merger);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = FFT_SIZE;
+        analyser.smoothingTimeConstant = 0.8;
+        src.connect(analyser);
+        analyser.connect(merger);
         sources.push(src);
+        analysers.push(analyser);
       });
 
       // Analyser maestro en la mezcla final
@@ -402,20 +404,18 @@
       AMP_FFT_MULT: 5,         // amplitud extra por energia
       SMOOTH_PASSES: 3,          // pasadas de suavizado espacial (mas = mas suave)
       SMOOTH_TEMPORAL: 0.3,      // suavizado temporal entre frames (0-1, menor = mas suave)
-      FREQ_MULT: isTouchDevice ? 2 : 3, // veces que se repite el patron FFT (menor en tablet)
+      FREQ_MULT: 3,              // veces que se repite el patron FFT alrededor del anillo (mas = mas oscilaciones)
     };
     // =============================================
 
     // --- P5 FFT Lines (instance mode) ---
     const fftViz = (p) => {
       let smoothedFFT = null; // buffer para suavizado temporal
-      let spatialBufA = null; // buffers pre-alocados para smoothSpatial
-      let spatialBufB = null;
 
-      // Suavizado espacial: moving average circular (buffers pre-alocados)
+      // Suavizado espacial: moving average circular
       function smoothSpatial(arr, passes) {
         let src = arr;
-        let dst = spatialBufA;
+        let dst = new Float32Array(arr.length);
         for (let pass = 0; pass < passes; pass++) {
           for (let i = 0; i < src.length; i++) {
             const prev = src[(i - 1 + src.length) % src.length];
@@ -423,9 +423,10 @@
             const next = src[(i + 1) % src.length];
             dst[i] = prev * 0.25 + curr * 0.5 + next * 0.25;
           }
+          // Intercambiar buffers
           const tmp = src;
           src = dst;
-          dst = tmp === spatialBufA ? spatialBufB : spatialBufA;
+          dst = (pass === 0) ? new Float32Array(arr.length) : tmp;
         }
         return src;
       }
@@ -446,12 +447,8 @@
         const raw = bands.raw;
         const bins = raw.length;
 
-        // Inicializar buffers una sola vez
-        if (!smoothedFFT) {
-          smoothedFFT = new Float32Array(bins);
-          spatialBufA = new Float32Array(bins);
-          spatialBufB = new Float32Array(bins);
-        }
+        // Inicializar buffer de suavizado temporal
+        if (!smoothedFFT) smoothedFFT = new Float32Array(bins);
 
         // Suavizado temporal: interpolar entre frame anterior y actual
         for (let i = 0; i < bins; i++) {
@@ -600,27 +597,6 @@
       blend(blendAmt)
       displace(circX*2, circY, 0)
       sphere(sphSize * sScale)
-    ${isTouchDevice ? '' : `
-      blend(0.15)
-      displace(-circX*2, -1.05 * sScale - circY, 0)
-      shape(() => {
-        color(n)
-        setStepSize(0.8)
-        rotateX(time * 0.02 + circX)
-        rotateY(time * 0.03)
-        rotateX(PI/2)
-        torus(0.09 * (0.7 + click * 0.3) * sScale, 0.02 * sScale)
-      })()
-      blend(0.15)
-      displace(0, 2.1 * sScale, 0)
-      shape(() => {
-        color(n)
-        setStepSize(0.8)
-        rotateX(time * 0.015 - circX)
-        rotateZ(time * 0.025)
-        sphere(0.18 * (0.6 + click * 0.3) * sScale)
-      })()
-    `}
     `;
 
     let canvas = document.querySelector('.my-canvas');
@@ -654,7 +630,7 @@
       state.circY = Math.sin(t * S.ORBIT_SPEED) * radius;
 
       state.currButtonHover = state.currButtonHover * .999 + state.buttonHover * .001;
-      state.currClick = state.currClick * .995 + state.click * .005;
+      state.currClick = state.currClick * .92 + state.click * .08;
 
       const aspect = canvas.clientWidth / canvas.clientHeight;
       const sScale = aspect < 1 ? S.MOBILE_SCALE_MIN + aspect * S.MOBILE_SCALE_FACTOR : 1.0;
