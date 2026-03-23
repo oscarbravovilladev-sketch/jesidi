@@ -3,7 +3,13 @@
     "allow": [
       "WebFetch(domain:openprocessing.org)",
       "Bash(npx @anthropic-ai/claude-code-skills add https://github.com/sickn33/antigravity-awesome-skills --skill shader-programming-glsl 2>&1)",
-      "Bash(for f:*)"
+      "Bash(for f:*)",
+      "Bash(grep -r \"ESP32\\\\|Arduino\\\\|PlatformIO\" /Users/oscarbravovilla/Desktop/jesidi --include=\"*.md\" --include=\"*.txt\" --include=\"*.html\" 2>/dev/null | head -20)",
+      "Bash(find ~/Documents/Arduino/libraries -name \"*LD2450*\" 2>/dev/null | head -20)",
+      "Bash(find ~/Arduino/libraries -name \"*LD2450*\" 2>/dev/null | head -20)",
+      "Bash(find ~/.arduino15 -name \"*LD2450*\" 2>/dev/null | head -20)",
+      "Bash(grep -r \"LD2450\\\\|ld2450\" /Users/oscarbravovilla/Desktop/Freenove_Ultimate_Starter_Kit_for_ESP32_S3-main --include=\"*.ino\" --include=\"*.cpp\" --include=\"*.h\" 2>/dev/null | head -20)",
+      "Bash(grep -r \"LD2450\\\\|ld2450\" /Users/oscarbravovilla/Desktop/jesidi --include=\"*.ino\" --include=\"*.cpp\" --include=\"*.h\" 2>/dev/null | head -20)"
     ]
   }
 }

@@ -122,13 +122,6 @@
       pointer-events: none;
     }
   </style>
-  <script>
-    // Opt #1: forzar DPI 1x en tablets/moviles para reducir carga GPU
-    var isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    if (isTouchDevice) {
-      Object.defineProperty(window, 'devicePixelRatio', { get: () => 1 });
-    }
-  </script>
   <script src="https://cdn.jsdelivr.net/npm/p5@1.11.7/lib/p5.js"></script>
 </head>
 
@@ -187,7 +180,7 @@
     const sources = [];         // MediaElementSource por track
     let masterAnalyser = null;  // Analyser de la mezcla final
     let fftData = null;         // Uint8Array con espectro completo
-    const FFT_SIZE = 128;       // bins de frecuencia (128 bandas utiles)
+    const FFT_SIZE = 256;       // bins de frecuencia (128 bandas utiles)
     // Datos FFT extraidos (se actualizan cada frame)
     const fftBands = {
       bass: 0,      // 0-250 Hz (energia de graves)
@@ -433,7 +426,7 @@
       p.setup = () => {
         const c = p.createCanvas(p.windowWidth, p.windowHeight);
         c.id('p5-canvas');
-        p.frameRate(isTouchDevice ? 24 : 30);
+        p.frameRate(30);
       };
 
       p.draw = () => {
@@ -524,33 +517,13 @@
     // =============================================
   </script>
 
-  <script>
-    // Opt #8: throttle requestAnimationFrame a ~30fps en tablets
-    if (isTouchDevice) {
-      const _nativeRAF = window.requestAnimationFrame.bind(window);
-      const _frameInterval = 1000 / 30;
-      let _lastFrame = 0;
-      window.requestAnimationFrame = function(callback) {
-        return _nativeRAF(function(ts) {
-          const elapsed = ts - _lastFrame;
-          if (elapsed >= _frameInterval) {
-            _lastFrame = ts - (elapsed % _frameInterval);
-            callback(ts);
-          } else {
-            setTimeout(function() { _nativeRAF(callback); }, _frameInterval - elapsed);
-          }
-        });
-      };
-    }
-  </script>
-
   <script type="module">
     import {sculptToMinimalRenderer} from 'https://unpkg.com/shader-park-core/dist/shader-park-core.esm.js';
 
     const S = SHADER_PARAMS;
 
     const spCode = `
-      setMaxIterations(4);
+      setMaxIterations(8);
       let click = input();
       let buttonHover = input();
       let circX = input();
