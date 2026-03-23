@@ -404,6 +404,7 @@
       AMP_FFT_MULT: 5,         // amplitud extra por energia
       SMOOTH_PASSES: 3,          // pasadas de suavizado espacial (mas = mas suave)
       SMOOTH_TEMPORAL: 0.3,      // suavizado temporal entre frames (0-1, menor = mas suave)
+      FREQ_MULT: 3,              // veces que se repite el patron FFT alrededor del anillo (mas = mas oscilaciones)
     };
     // =============================================
 
@@ -461,28 +462,31 @@
         const cx = p.width / 2;
         const cy = p.height / 2 + p.height * R.CENTER_Y_OFFSET;
         const baseR = p.min(p.width, p.height) * R.BASE_RADIUS;
+        const ringSpacing = R.RING_SPACING * p.min(p.width, p.height) / 400;
 
         p.noFill();
 
         for (let layer = 0; layer < R.NUM_RINGS; layer++) {
-          const rOffset = baseR + layer * R.RING_SPACING;
+          const rOffset = baseR + layer * ringSpacing;
           const phase = layer * p.TWO_PI / R.NUM_RINGS + t * R.ROTATION_SPEED * (layer % 2 === 0 ? 1 : -1);
           const alpha = R.ALPHA_BASE + bands.energy * R.ALPHA_FFT_MULT - layer * R.ALPHA_DECAY;
 
           p.stroke(255, alpha);
           p.strokeWeight(R.STROKE_BASE - layer * R.STROKE_DECAY);
 
+          const totalPts = bins * R.FREQ_MULT;
           p.beginShape();
-          for (let i = 0; i <= bins; i++) {
+          for (let i = 0; i <= totalPts; i++) {
             const idx = i % bins;
-            const angle = p.map(i, 0, bins, 0, p.TWO_PI) + phase;
+            const angle = p.map(i, 0, totalPts, 0, p.TWO_PI) + phase;
             const amp = smooth[idx] / 255;
             const r = rOffset + amp * (R.AMP_BASE + bands.energy * R.AMP_FFT_MULT);
             p.curveVertex(cx + p.cos(angle) * r, cy + p.sin(angle) * r);
           }
           for (let i = 0; i < 3; i++) {
-            const angle = p.map(i, 0, bins, 0, p.TWO_PI) + phase;
-            const amp = smooth[i] / 255;
+            const idx = i % bins;
+            const angle = p.map(i, 0, totalPts, 0, p.TWO_PI) + phase;
+            const amp = smooth[idx] / 255;
             const r = rOffset + amp * (R.AMP_BASE + bands.energy * R.AMP_FFT_MULT);
             p.curveVertex(cx + p.cos(angle) * r, cy + p.sin(angle) * r);
           }
