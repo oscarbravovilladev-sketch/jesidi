@@ -24,7 +24,6 @@ export const spCode =  `
 		torus(scale, .2)
 		reset();
 		mixGeo(click)
-		
 		sphere(scale);
 	})()
   blend(.4)

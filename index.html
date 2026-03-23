@@ -600,7 +600,6 @@
       blend(blendAmt)
       displace(circX*2, circY, 0)
       sphere(sphSize * sScale)
-    ${isTouchDevice ? '' : `
       blend(0.15)
       displace(-circX*2, -1.05 * sScale - circY, 0)
       shape(() => {
@@ -620,7 +619,6 @@
         rotateZ(time * 0.025)
         sphere(0.18 * (0.6 + click * 0.3) * sScale)
       })()
-    `}
     `;
 
     let canvas = document.querySelector('.my-canvas');
