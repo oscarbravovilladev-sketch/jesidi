@@ -622,7 +622,7 @@
       }
 
       // Orbita circular con radio modulado por FFT
-      const t = performance.now() / 1000;
+      const t = performance.now() / 10000;
       const bands = window.fftBands;
       const energy = bands ? bands.energy : 0;
       const radius = S.ORBIT_RADIUS + energy * S.ORBIT_FFT_PUSH;

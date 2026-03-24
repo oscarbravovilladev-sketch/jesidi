@@ -129,7 +129,7 @@
       Object.defineProperty(window, 'devicePixelRatio', { get: () => 1 });
     }
   </script>
-  <script src="https://cdn.jsdelivr.net/npm/p5@1.11.7/lib/p5.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.11.7/lib/p5.js"></script>
 </head>
 
 <body>
@@ -139,15 +139,7 @@
   </div>
 
   <canvas class="my-canvas"></canvas>
-  <div id="sensor-info">
-    <div>
-      <span id="s-xy"></span>
-      <span id="s-dist"></span>
-      <span id="s-ang"></span>
-      <span id="s-temp"></span>
-      <span id="s-hum"></span>
-    </div>
-  </div>
+  <div id="sensor-info"></div>
   <div id="audio-ui">
     <span class="ui-name ui-name-left" id="ui-name-l"></span>
     <div class="ui-bar-wrap ui-bar-wrap-left"><div class="ui-bar-fill" id="ui-bar-l"></div></div>
@@ -191,6 +183,7 @@
 
     // --- FFT ---
     let audioCtx = null;
+    const analysers = [];       // AnalyserNode por track
     const sources = [];         // MediaElementSource por track
     let masterAnalyser = null;  // Analyser de la mezcla final
     let fftData = null;         // Uint8Array con espectro completo
@@ -227,15 +220,26 @@
 
     client.on("connect", () => client.subscribe("JESIDI-IOT-POC-200574"));
 
+    // Cache de elementos DOM
+    const domSensorInfo = document.getElementById('sensor-info');
+    const domNameL = document.getElementById('ui-name-l');
+    const domNameR = document.getElementById('ui-name-r');
+    const domBarL = document.getElementById('ui-bar-l');
+    const domBarR = document.getElementById('ui-bar-r');
+
     client.on("message", (_t, payload) => {
       try {
         const j = JSON.parse(payload.toString());
 
-        document.getElementById('s-xy').textContent = 'X:' + j.x + ' Y:' + j.y;
-        document.getElementById('s-dist').textContent = 'D:' + j.dist + 'mm';
-        document.getElementById('s-ang').textContent = 'A:' + j.ang + '°';
-        document.getElementById('s-temp').textContent = 'T:' + j.temp + '°C';
-        document.getElementById('s-hum').textContent = 'H:' + j.hum + ' HR';
+        domSensorInfo.innerHTML = `
+          <div>
+            <span>X:${j.x} Y:${j.y}</span>
+            <span>D:${j.dist}mm</span>
+            <span>A:${j.ang}°</span>
+            <span>T:${j.temp}°C</span>
+            <span>H:${j.hum} HR</span>
+          </div>
+        `;
         // Exponer datos del sensor para el shader
         window.sensorData = { x: j.x, y: j.y, dist: j.dist, ang: j.ang, temp: j.temp, hum: j.hum };
 
@@ -278,29 +282,24 @@
         if (vol > 0) activeZones.push({ zi, track: ZONES[zi].track, vol });
       }
 
-      const nameL = document.getElementById('ui-name-l');
-      const nameR = document.getElementById('ui-name-r');
-      const barL = document.getElementById('ui-bar-l');
-      const barR = document.getElementById('ui-bar-r');
-
       if (activeZones.length === 0) {
-        nameL.textContent = '';
-        nameR.textContent = '';
-        barL.style.width = '0';
-        barR.style.width = '0';
+        domNameL.textContent = '';
+        domNameR.textContent = '';
+        domBarL.style.width = '0';
+        domBarR.style.width = '0';
       } else if (activeZones.length === 1) {
         const a = activeZones[0];
-        nameL.textContent = trackName(a.track);
-        nameR.textContent = '';
-        barL.style.width = (a.vol * 100) + '%';
-        barR.style.width = '0';
+        domNameL.textContent = trackName(a.track);
+        domNameR.textContent = '';
+        domBarL.style.width = (a.vol * 100) + '%';
+        domBarR.style.width = '0';
       } else {
         const left = activeZones[0];
         const right = activeZones[1];
-        nameL.textContent = trackName(left.track);
-        nameR.textContent = trackName(right.track);
-        barL.style.width = (left.vol * 100) + '%';
-        barR.style.width = (right.vol * 100) + '%';
+        domNameL.textContent = trackName(left.track);
+        domNameR.textContent = trackName(right.track);
+        domBarL.style.width = (left.vol * 100) + '%';
+        domBarR.style.width = (right.vol * 100) + '%';
       }
     }
 
@@ -313,7 +312,7 @@
       merger.gain.value = 1;
       merger.connect(audioCtx.destination);
 
-      // Conectar cada audio element directo al merger (sin analyser individual)
+      // Conectar cada audio element directo al merger (sin analysers individuales)
       audioElements.forEach(a => {
         const src = audioCtx.createMediaElementSource(a);
         src.connect(merger);
@@ -385,8 +384,35 @@
 
   <script>
     // =============================================
-    // PARAMETROS AJUSTABLES - FFT RINGS
+    // PARAMETROS AJUSTABLES - NEBULOSAS
     // =============================================
+    const NEBULA = {
+      PARTICLE_COUNT: 50,        // particulas por nebulosa
+      BASE_RADIUS: 300,           // radio base de la nube (px)
+      RADIUS_FFT_MULT: 120,       // expansion extra por energia FFT
+      PARTICLE_SIZE_MIN: 10,       // tamaño minimo de particula
+      PARTICLE_SIZE_MAX: 25,      // tamaño maximo de particula
+      PARTICLE_SIZE_FFT: 20,      // tamaño extra por FFT
+      ALPHA_BASE: 40,             // opacidad base (0-255)
+      ALPHA_FFT_MULT: 80,         // opacidad extra por FFT
+      NOISE_SPEED: 0.5,           // velocidad del movimiento noise
+      NOISE_SCALE: 0.008,         // escala del noise (menor = mas suave)
+      DRIFT_AMOUNT: 40,           // amplitud de deriva por noise (px)
+      BREATHE_SPEED: 0.8,         // velocidad de respiracion (expansion/contraccion)
+      BREATHE_AMOUNT: 0.15,       // amplitud de respiracion (0-1)
+      COLOR_1: [255, 255, 255],   // color nebulosa 1 (blanco)
+      COLOR_2: [255, 255, 255],   // color nebulosa 2 (blanco)
+      // Posicion (proporcion del viewport, 0=centro)
+      POS_1_X: 0.0,               // nebulosa 1 - centrada horizontal
+      POS_1_Y: -0.38,             // nebulosa 1 - arriba
+      POS_2_X: 0.0,               // nebulosa 2 - centrada horizontal
+      POS_2_Y: 0.30,              // nebulosa 2 - abajo
+      // Movimiento orbital lento
+      ORBIT_RADIUS: 20,           // radio de orbita lenta (px)
+      ORBIT_SPEED: 0.08,          // velocidad orbital
+    };
+    // =============================================
+
     const FFT_RINGS = {
       NUM_RINGS: 15,              // cantidad de anillos
       CENTER_Y_OFFSET: 0.0,    // desplazamiento vertical del centro (-1 a 1, negativo = arriba)
@@ -402,20 +428,59 @@
       AMP_FFT_MULT: 5,         // amplitud extra por energia
       SMOOTH_PASSES: 3,          // pasadas de suavizado espacial (mas = mas suave)
       SMOOTH_TEMPORAL: 0.3,      // suavizado temporal entre frames (0-1, menor = mas suave)
-      FREQ_MULT: isTouchDevice ? 2 : 3, // veces que se repite el patron FFT (menor en tablet)
+      FREQ_MULT: 3,              // veces que se repite el patron FFT alrededor del anillo (mas = mas oscilaciones)
     };
     // =============================================
 
-    // --- P5 FFT Lines (instance mode) ---
+    // --- P5 FFT Lines + Nebulosas (instance mode) ---
     const fftViz = (p) => {
       let smoothedFFT = null; // buffer para suavizado temporal
-      let spatialBufA = null; // buffers pre-alocados para smoothSpatial
-      let spatialBufB = null;
 
-      // Suavizado espacial: moving average circular (buffers pre-alocados)
+      // --- Nebulosas: generar particulas con distribucion gaussiana ---
+      function gaussRandom() {
+        // Box-Muller transform
+        let u = 0, v = 0;
+        while (u === 0) u = Math.random();
+        while (v === 0) v = Math.random();
+        return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+      }
+
+      function createNebula(count) {
+        const particles = [];
+        for (let i = 0; i < count; i++) {
+          // Posicion gaussiana (la mayoria cerca del centro)
+          const angle = Math.random() * Math.PI * 2;
+          const dist = Math.abs(gaussRandom()) * 0.5; // 0-~1.5, concentrado en 0-0.5
+          particles.push({
+            ox: Math.cos(angle) * dist,  // offset normalizado (-1 a 1)
+            oy: Math.sin(angle) * dist,
+            size: Math.random(),          // 0-1, se escala al dibujar
+            phase: Math.random() * Math.PI * 2, // fase individual
+          });
+        }
+        return particles;
+      }
+
+      const nebula1 = createNebula(NEBULA.PARTICLE_COUNT);
+      const nebula2 = createNebula(NEBULA.PARTICLE_COUNT);
+
+      // Pre-renderizar textura de particula con degradado radial (evita paths por frame)
+      const particleTex = document.createElement('canvas');
+      const TEX_SIZE = 64;
+      particleTex.width = TEX_SIZE;
+      particleTex.height = TEX_SIZE;
+      const ptCtx = particleTex.getContext('2d');
+      const grad = ptCtx.createRadialGradient(TEX_SIZE/2, TEX_SIZE/2, 0, TEX_SIZE/2, TEX_SIZE/2, TEX_SIZE/2);
+      grad.addColorStop(0, 'rgba(255,255,255,1)');
+      grad.addColorStop(0.5, 'rgba(255,255,255,0.3)');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      ptCtx.fillStyle = grad;
+      ptCtx.fillRect(0, 0, TEX_SIZE, TEX_SIZE);
+
+      // Suavizado espacial: moving average circular
       function smoothSpatial(arr, passes) {
         let src = arr;
-        let dst = spatialBufA;
+        let dst = new Float32Array(arr.length);
         for (let pass = 0; pass < passes; pass++) {
           for (let i = 0; i < src.length; i++) {
             const prev = src[(i - 1 + src.length) % src.length];
@@ -423,11 +488,56 @@
             const next = src[(i + 1) % src.length];
             dst[i] = prev * 0.25 + curr * 0.5 + next * 0.25;
           }
+          // Intercambiar buffers
           const tmp = src;
           src = dst;
-          dst = tmp === spatialBufA ? spatialBufB : spatialBufA;
+          dst = (pass === 0) ? new Float32Array(arr.length) : tmp;
         }
         return src;
+      }
+
+      // --- Dibujar una nebulosa (batch con drawImage) ---
+      function drawNebula(p, particles, fftVal, color, centerX, centerY, t, seed) {
+        const N = NEBULA;
+        const ctx = p.drawingContext;
+
+        // Orbita lenta del centro
+        const ox = centerX + Math.cos(t * N.ORBIT_SPEED + seed) * N.ORBIT_RADIUS;
+        const oy = centerY + Math.sin(t * N.ORBIT_SPEED * 0.7 + seed) * N.ORBIT_RADIUS;
+
+        // Respiracion: expansion/contraccion ciclica
+        const breathe = 1 + Math.sin(t * N.BREATHE_SPEED + seed) * N.BREATHE_AMOUNT;
+
+        // Radio actual
+        const radius = (N.BASE_RADIUS + fftVal * N.RADIUS_FFT_MULT) * breathe;
+
+        for (let i = 0; i < particles.length; i++) {
+          const pt = particles[i];
+
+          // Posicion base
+          let px = pt.ox * radius;
+          let py = pt.oy * radius;
+
+          // Deriva con Perlin noise
+          const nx = p.noise(pt.ox * 2 + seed, pt.oy * 2, t * N.NOISE_SPEED);
+          const ny = p.noise(pt.ox * 2 + seed + 50, pt.oy * 2 + 50, t * N.NOISE_SPEED);
+          px += (nx - 0.5) * N.DRIFT_AMOUNT * 2;
+          py += (ny - 0.5) * N.DRIFT_AMOUNT * 2;
+
+          // Tamaño de particula
+          const size = N.PARTICLE_SIZE_MIN +
+            pt.size * (N.PARTICLE_SIZE_MAX - N.PARTICLE_SIZE_MIN) +
+            fftVal * N.PARTICLE_SIZE_FFT;
+
+          // Opacidad: mas opaca cerca del centro, modulada por FFT
+          const distFromCenter = Math.sqrt(pt.ox * pt.ox + pt.oy * pt.oy);
+          const falloff = Math.max(0, 1 - distFromCenter * 1.2);
+          const alpha = ((N.ALPHA_BASE + fftVal * N.ALPHA_FFT_MULT) * falloff) / 255;
+
+          ctx.globalAlpha = alpha;
+          ctx.drawImage(particleTex, ox + px - size/2, oy + py - size/2, size, size);
+        }
+        ctx.globalAlpha = 1;
       }
 
       p.setup = () => {
@@ -446,12 +556,8 @@
         const raw = bands.raw;
         const bins = raw.length;
 
-        // Inicializar buffers una sola vez
-        if (!smoothedFFT) {
-          smoothedFFT = new Float32Array(bins);
-          spatialBufA = new Float32Array(bins);
-          spatialBufB = new Float32Array(bins);
-        }
+        // Inicializar buffer de suavizado temporal
+        if (!smoothedFFT) smoothedFFT = new Float32Array(bins);
 
         // Suavizado temporal: interpolar entre frame anterior y actual
         for (let i = 0; i < bins; i++) {
@@ -466,6 +572,12 @@
         const cy = p.height / 2 + p.height * R.CENTER_Y_OFFSET;
         const baseR = p.min(p.width, p.height) * R.BASE_RADIUS;
         const ringSpacing = R.RING_SPACING * p.min(p.width, p.height) / 400;
+
+        // --- Dibujar Nebulosas ---
+        drawNebula(p, nebula1, bands.bass, NEBULA.COLOR_1,
+          cx + p.width * NEBULA.POS_1_X, cy + p.height * NEBULA.POS_1_Y, t, 0);
+        drawNebula(p, nebula2, bands.treble, NEBULA.COLOR_2,
+          cx + p.width * NEBULA.POS_2_X, cy + p.height * NEBULA.POS_2_Y, t, 100);
 
         p.noFill();
 
@@ -510,6 +622,7 @@
     // PARAMETROS AJUSTABLES - SHADER TORUS
     // =============================================
     const SHADER_PARAMS = {
+      RESOLUTION_SCALE: 0.6,     // resolucion del shader (0.5=50%, 0.75=75%, 1=nativa)
       CENTER_Y_OFFSET: 0.0,    // desplazamiento vertical (-1 arriba, 1 abajo)
       CENTER_X_OFFSET: 0.0,      // desplazamiento horizontal (-1 izq, 1 der)
       TORUS_SCALE: 0.55,          // escala base del torus
@@ -600,28 +713,20 @@
       blend(blendAmt)
       displace(circX*2, circY, 0)
       sphere(sphSize * sScale)
-      blend(0.15)
-      displace(-circX*2, -1.05 * sScale - circY, 0)
-      shape(() => {
-        color(n)
-        setStepSize(0.8)
-        rotateX(time * 0.02 + circX)
-        rotateY(time * 0.03)
-        rotateX(PI/2)
-        torus(0.09 * (0.7 + click * 0.3) * sScale, 0.02 * sScale)
-      })()
-      blend(0.15)
-      displace(0, 2.1 * sScale, 0)
-      shape(() => {
-        color(n)
-        setStepSize(0.8)
-        rotateX(time * 0.015 - circX)
-        rotateZ(time * 0.025)
-        sphere(0.18 * (0.6 + click * 0.3) * sScale)
-      })()
     `;
 
     let canvas = document.querySelector('.my-canvas');
+
+    // Opt: renderizar shader a menor resolucion
+    const _resScale = S.RESOLUTION_SCALE;
+    canvas.width = Math.floor(canvas.clientWidth * _resScale);
+    canvas.height = Math.floor(canvas.clientHeight * _resScale);
+    // Re-aplicar en resize
+    window.addEventListener('resize', () => {
+      canvas.width = Math.floor(canvas.clientWidth * _resScale);
+      canvas.height = Math.floor(canvas.clientHeight * _resScale);
+    });
+
     let state = {
       buttonHover: 0.0,
       currButtonHover: 0.0,
@@ -652,7 +757,7 @@
       state.circY = Math.sin(t * S.ORBIT_SPEED) * radius;
 
       state.currButtonHover = state.currButtonHover * .999 + state.buttonHover * .001;
-      state.currClick = state.currClick * .995 + state.click * .005;
+      state.currClick = state.currClick * .92 + state.click * .08;
 
       const aspect = canvas.clientWidth / canvas.clientHeight;
       const sScale = aspect < 1 ? S.MOBILE_SCALE_MIN + aspect * S.MOBILE_SCALE_FACTOR : 1.0;
