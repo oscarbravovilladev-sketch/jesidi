@@ -424,7 +424,7 @@
       FILAMENT_COUNT: 20,         // numero de filamentos
       FILAMENT_LENGTH: 0.60,      // longitud (proporcion del viewport)
       FILAMENT_FFT: 0.12,         // longitud extra por energia
-      FILAMENT_ALPHA: 150,        // opacidad de filamentos
+      FILAMENT_ALPHA: 80,        // opacidad de filamentos
       FILAMENT_SPEED: 0.15,       // velocidad de ondulacion
       FILAMENT_CURL: 2.5,         // curvatura de los filamentos
       FILAMENT_WEIGHT: 1,         // grosor base de filamentos (px)
@@ -438,7 +438,7 @@
 
     const NEBULA = {
       PARTICLE_COUNT: 50,        // particulas por nebulosa
-      BASE_RADIUS: 150,           // radio base de la nube (px)
+      BASE_RADIUS: 120,           // radio base de la nube (px)
       RADIUS_FFT_MULT: 120,       // expansion extra por energia FFT
       PARTICLE_SIZE_MIN: 10,       // tamaño minimo de particula
       PARTICLE_SIZE_MAX: 25,      // tamaño maximo de particula
@@ -460,6 +460,15 @@
       // Movimiento orbital lento
       ORBIT_RADIUS: 20,           // radio de orbita lenta (px)
       ORBIT_SPEED: 0.08,          // velocidad orbital
+      // Filamentos verticales (nebulosa inferior)
+      VFIL_ENABLED: true,         // activar/desactivar filamentos verticales
+      VFIL_LENGTH_MIN: 40,        // longitud minima (px)
+      VFIL_LENGTH_MAX: 180,       // longitud maxima (px)
+      VFIL_LENGTH_FFT: 60,        // longitud extra por energia FFT
+      VFIL_ALPHA: 80,             // opacidad base (0-255)
+      VFIL_WEIGHT: 1,             // grosor (px)
+      VFIL_WAVE_SPEED: 0.4,       // velocidad de ondulacion lateral
+      VFIL_WAVE_AMP: 3,           // amplitud de ondulacion lateral (px)
     };
     // =============================================
 
@@ -743,6 +752,59 @@
         ctx.globalAlpha = 1;
       }
 
+      // --- Filamentos verticales desde particulas inferiores ---
+      function drawVerticalFilaments(p, particles, fftVal, centerX, centerY, t, seed) {
+        const N = NEBULA;
+        const ctx = p.drawingContext;
+
+        const ox = centerX + Math.cos(t * N.ORBIT_SPEED + seed) * N.ORBIT_RADIUS;
+        const oy = centerY + Math.sin(t * N.ORBIT_SPEED * 0.7 + seed) * N.ORBIT_RADIUS;
+        const breathe = 1 + Math.sin(t * N.BREATHE_SPEED + seed) * N.BREATHE_AMOUNT;
+        const radius = (N.BASE_RADIUS + fftVal * N.RADIUS_FFT_MULT) * breathe;
+
+        const segments = 8;
+
+        for (let i = 0; i < particles.length; i++) {
+          const pt = particles[i];
+
+          // Posicion de la particula (misma logica que drawNebula)
+          let px = pt.ox * radius;
+          let py = pt.oy * radius;
+          const nx = p.noise(pt.ox * 2 + seed, pt.oy * 2, t * N.NOISE_SPEED);
+          const ny = p.noise(pt.ox * 2 + seed + 50, pt.oy * 2 + 50, t * N.NOISE_SPEED);
+          px += (nx - 0.5) * N.DRIFT_AMOUNT * 2;
+          py += (ny - 0.5) * N.DRIFT_AMOUNT * 2;
+
+          const startX = ox + px;
+          const startY = oy + py;
+
+          // Longitud variable por particula + FFT
+          const filLen = N.VFIL_LENGTH_MIN +
+            pt.size * (N.VFIL_LENGTH_MAX - N.VFIL_LENGTH_MIN) +
+            fftVal * N.VFIL_LENGTH_FFT;
+
+          // Opacidad: hereda falloff de la particula
+          const distFromCenter = Math.sqrt(pt.ox * pt.ox + pt.oy * pt.oy);
+          const falloff = Math.max(0, 1 - distFromCenter * 1.2);
+          const alpha = (N.VFIL_ALPHA * falloff) / 255;
+          if (alpha < 0.01) continue;
+
+          ctx.beginPath();
+          ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+          ctx.lineWidth = N.VFIL_WEIGHT;
+
+          for (let s = 0; s <= segments; s++) {
+            const st = s / segments;
+            // Ondulacion lateral sutil con noise
+            const wave = Math.sin(t * N.VFIL_WAVE_SPEED + pt.phase + st * 4) * N.VFIL_WAVE_AMP * st;
+            const fx = startX + wave;
+            const fy = startY + st * filLen;
+            if (s === 0) ctx.moveTo(fx, fy); else ctx.lineTo(fx, fy);
+          }
+          ctx.stroke();
+        }
+      }
+
       p.setup = () => {
         const c = p.createCanvas(p.windowWidth, p.windowHeight);
         c.id('p5-canvas');
@@ -787,6 +849,11 @@
             cx + p.width * NEBULA.POS_1_X, cy + p.height * NEBULA.POS_1_Y, t, 0);
           drawNebula(p, nebula2, bands.treble, NEBULA.COLOR_2,
             cx + p.width * NEBULA.POS_2_X, cy + p.height * NEBULA.POS_2_Y, t, 100);
+          // Filamentos verticales desde nebulosa inferior
+          if (NEBULA.VFIL_ENABLED) {
+            drawVerticalFilaments(p, nebula2, bands.treble,
+              cx + p.width * NEBULA.POS_2_X, cy + p.height * NEBULA.POS_2_Y, t, 100);
+          }
         }
 
         p.noFill();
