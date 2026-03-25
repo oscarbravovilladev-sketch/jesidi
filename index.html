@@ -386,14 +386,64 @@
     // =============================================
     // PARAMETROS AJUSTABLES - NEBULOSAS
     // =============================================
+    let PARTICLES_ENABLED = true; // activar/desactivar sistema de particulas (nebulosas)
+    let ETHER_ENABLED = true;      // activar/desactivar blob etereo
+
+    // =============================================
+    // PARAMETROS AJUSTABLES - BLOB ETEREO
+    // =============================================
+    const ETHER = {
+      NUM_LAYERS: 7,              // capas concentricas del blob
+      BASE_RADIUS: 0.09,          // radio base (proporcion del viewport)
+      LAYER_SPACING: 6,          // separacion entre capas (px)
+      // Deformacion organica
+      NOISE_SCALE: 1.2,           // escala del noise (menor = formas mas grandes)
+      NOISE_SPEED: 0.3,           // velocidad de mutacion
+      NOISE_OCTAVES: 3,           // capas de detalle en la deformacion
+      DEFORM_BASE: 0.3,           // amplitud base de deformacion (proporcion del radio)
+      DEFORM_FFT: 0.5,            // deformacion extra por energia FFT
+      // Respiracion
+      BREATHE_SPEED: 0.4,         // velocidad de respiracion
+      BREATHE_BASS: 0.25,         // expansion por graves
+      // Apariencia
+      ALPHA_CORE: 30,             // opacidad de la capa interna (0-255)
+      ALPHA_OUTER: 8,             // opacidad de la capa externa (0-255)
+      STROKE_WEIGHT: 1.5,         // grosor de borde
+      STROKE_ALPHA: 50,           // opacidad del borde
+      GLOW_PASSES: 3,             // pasadas de glow (capas extra difusas)
+      GLOW_EXPAND: 12,            // expansion del glow (px por pasada)
+      GLOW_ALPHA: 6,              // opacidad del glow por pasada
+      // Color (HSB)
+      HUE_BASE: 360,              // tono base (0-360, 220=azul frio)
+      HUE_RANGE: 40,              // variacion de tono entre capas
+      HUE_FFT_SHIFT: 60,          // cambio de tono por energia
+      SAT_BASE: 0,                // saturacion base (0-100, 0=blanco)
+      SAT_FFT: 0,                 // saturacion extra por agudos
+      BRI_BASE: 100,               // brillo base (0-100)
+      // Filamentos (solo mitad superior)
+      FILAMENT_COUNT: 20,         // numero de filamentos
+      FILAMENT_LENGTH: 0.60,      // longitud (proporcion del viewport)
+      FILAMENT_FFT: 0.12,         // longitud extra por energia
+      FILAMENT_ALPHA: 150,        // opacidad de filamentos
+      FILAMENT_SPEED: 0.15,       // velocidad de ondulacion
+      FILAMENT_CURL: 2.5,         // curvatura de los filamentos
+      FILAMENT_WEIGHT: 1,         // grosor base de filamentos (px)
+      // Posicion
+      POS_X: 0.0,                 // posicion horizontal (proporcion, 0=centro)
+      POS_Y: -0.35,                // posicion vertical (proporcion, 0=centro)
+      // Vertices por capa (mas = mas suave)
+      RESOLUTION: 80,
+    };
+    // =============================================
+
     const NEBULA = {
       PARTICLE_COUNT: 50,        // particulas por nebulosa
-      BASE_RADIUS: 300,           // radio base de la nube (px)
+      BASE_RADIUS: 150,           // radio base de la nube (px)
       RADIUS_FFT_MULT: 120,       // expansion extra por energia FFT
       PARTICLE_SIZE_MIN: 10,       // tamaño minimo de particula
       PARTICLE_SIZE_MAX: 25,      // tamaño maximo de particula
       PARTICLE_SIZE_FFT: 20,      // tamaño extra por FFT
-      ALPHA_BASE: 40,             // opacidad base (0-255)
+      ALPHA_BASE: 150,             // opacidad base (0-255)
       ALPHA_FFT_MULT: 80,         // opacidad extra por FFT
       NOISE_SPEED: 0.5,           // velocidad del movimiento noise
       NOISE_SCALE: 0.008,         // escala del noise (menor = mas suave)
@@ -496,6 +546,159 @@
         return src;
       }
 
+      // --- Blob etereo (optimizado: canvas2D directo, LUTs, noise cacheado) ---
+      // Pre-computar lookup table de angulos
+      const _etherRes = ETHER.RESOLUTION;
+      const _etherAngles = new Float32Array(_etherRes);
+      const _etherCos = new Float32Array(_etherRes);
+      const _etherSin = new Float32Array(_etherRes);
+      for (let i = 0; i < _etherRes; i++) {
+        _etherAngles[i] = (i / _etherRes) * Math.PI * 2;
+        _etherCos[i] = Math.cos(_etherAngles[i]);
+        _etherSin[i] = Math.sin(_etherAngles[i]);
+      }
+      // Buffer reutilizable para noise por angulo (evita recalcular por capa)
+      const _etherNoise = new Float32Array(_etherRes);
+
+      // HSB a CSS rgba (evita colorMode de p5)
+      function hsbToRgba(h, s, b, a255) {
+        h = ((h % 360) + 360) % 360;
+        s /= 100; b /= 100;
+        const c = b * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = b - c;
+        let r, g, bl;
+        if (h < 60)       { r = c; g = x; bl = 0; }
+        else if (h < 120) { r = x; g = c; bl = 0; }
+        else if (h < 180) { r = 0; g = c; bl = x; }
+        else if (h < 240) { r = 0; g = x; bl = c; }
+        else if (h < 300) { r = x; g = 0; bl = c; }
+        else               { r = c; g = 0; bl = x; }
+        return `rgba(${(r+m)*255|0},${(g+m)*255|0},${(bl+m)*255|0},${a255/255})`;
+      }
+
+      function drawEther(p, bands, t, cx, cy) {
+        const E = ETHER;
+        const ctx = p.drawingContext;
+        const vMin = Math.min(p.width, p.height);
+        const baseR = vMin * E.BASE_RADIUS;
+        const breathe = 1 + Math.sin(t * E.BREATHE_SPEED) * 0.1 + bands.bass * E.BREATHE_BASS;
+        const hueShift = bands.energy * E.HUE_FFT_SHIFT;
+        const satBoost = bands.treble * E.SAT_FFT;
+        const centerX = cx + p.width * E.POS_X;
+        const centerY = cy + p.height * E.POS_Y;
+        const tSpeed = t * E.NOISE_SPEED;
+
+        // Calcular noise base por angulo (1 vez, reutilizado por capas)
+        for (let i = 0; i < _etherRes; i++) {
+          const cs = _etherCos[i], sn = _etherSin[i];
+          let nv = 0, amp = 1, freq = E.NOISE_SCALE;
+          for (let o = 0; o < E.NOISE_OCTAVES; o++) {
+            nv += p.noise(cs * freq + tSpeed, sn * freq + tSpeed * 0.7, tSpeed * 0.3 + o * 5) * amp;
+            amp *= 0.5; freq *= 2;
+          }
+          _etherNoise[i] = nv / 1.75;
+        }
+
+        // Funcion para trazar path de una capa (canvas2D directo con quadratic curves)
+        function traceBlobPath(layerIdx, radiusOffset, extraDeform) {
+          const r = (baseR + layerIdx * E.LAYER_SPACING + radiusOffset) * breathe;
+          const deform = (E.DEFORM_BASE + bands.energy * E.DEFORM_FFT + extraDeform) * r;
+          // Offset de noise por capa (barato, evita recalcular todo)
+          const layerOff = layerIdx * 0.15;
+
+          // Calcular puntos
+          const n = _etherRes;
+          // Primer punto
+          let nv0 = _etherNoise[0] + layerOff * (p.noise(tSpeed + layerIdx * 10) - 0.5);
+          let dr0 = r + (nv0 - 0.5) * deform * 2;
+          const x0 = centerX + _etherCos[0] * dr0;
+          const y0 = centerY + _etherSin[0] * dr0;
+
+          ctx.beginPath();
+          // Empezar en el punto medio entre el ultimo y el primero para cerrar suave
+          let nvLast = _etherNoise[n - 1] + layerOff * (p.noise(tSpeed + layerIdx * 10 + 0.7) - 0.5);
+          let drLast = r + (nvLast - 0.5) * deform * 2;
+          const xLast = centerX + _etherCos[n - 1] * drLast;
+          const yLast = centerY + _etherSin[n - 1] * drLast;
+          ctx.moveTo((xLast + x0) / 2, (yLast + y0) / 2);
+
+          for (let i = 0; i < n; i++) {
+            const next = (i + 1) % n;
+            const nvi = _etherNoise[i] + layerOff * (p.noise(tSpeed + layerIdx * 10 + i * 0.01) - 0.5);
+            const nvn = _etherNoise[next] + layerOff * (p.noise(tSpeed + layerIdx * 10 + next * 0.01) - 0.5);
+            const dri = r + (nvi - 0.5) * deform * 2;
+            const drn = r + (nvn - 0.5) * deform * 2;
+            const xi = centerX + _etherCos[i] * dri;
+            const yi = centerY + _etherSin[i] * dri;
+            const xn = centerX + _etherCos[next] * drn;
+            const yn = centerY + _etherSin[next] * drn;
+            ctx.quadraticCurveTo(xi, yi, (xi + xn) / 2, (yi + yn) / 2);
+          }
+          ctx.closePath();
+        }
+
+        // Glow exterior
+        for (let g = E.GLOW_PASSES; g >= 1; g--) {
+          traceBlobPath(E.NUM_LAYERS - 1, g * E.GLOW_EXPAND, 0.05 * g);
+          ctx.fillStyle = hsbToRgba(E.HUE_BASE + hueShift + E.HUE_RANGE, E.SAT_BASE + satBoost, E.BRI_BASE, E.GLOW_ALPHA);
+          ctx.fill();
+        }
+
+        // Capas del blob (exterior a interior)
+        const maxLayer = Math.max(1, E.NUM_LAYERS - 1);
+        for (let layer = E.NUM_LAYERS - 1; layer >= 0; layer--) {
+          traceBlobPath(layer, 0, 0);
+          const layerT = layer / maxLayer;
+          const alpha = E.ALPHA_CORE + (E.ALPHA_OUTER - E.ALPHA_CORE) * layerT;
+          const hue = (E.HUE_BASE + hueShift + layerT * E.HUE_RANGE) % 360;
+          const sat = E.SAT_BASE + satBoost * (1 - layerT);
+
+          ctx.fillStyle = hsbToRgba(hue, sat, E.BRI_BASE, alpha);
+          ctx.fill();
+
+          // Borde sutil en capas intermedias
+          if (layer > 0 && layer < E.NUM_LAYERS - 1) {
+            ctx.strokeStyle = hsbToRgba(hue, sat * 0.5, 100, E.STROKE_ALPHA * (1 - layerT));
+            ctx.lineWidth = E.STROKE_WEIGHT * (1 - layerT * 0.7);
+            ctx.stroke();
+          }
+        }
+
+        // Filamentos (solo mitad superior: angulos PI a 2*PI = hacia arriba)
+        const outerR = (baseR + (E.NUM_LAYERS - 1) * E.LAYER_SPACING) * breathe;
+        const bandVals = [bands.bass, bands.mid, bands.treble];
+        const segments = 10;
+
+        for (let f = 0; f < E.FILAMENT_COUNT; f++) {
+          // Distribuir solo en la mitad superior (PI a 2*PI)
+          const baseAngle = Math.PI + (f / E.FILAMENT_COUNT) * Math.PI;
+          const angle = baseAngle + (p.noise(f * 3, t * E.FILAMENT_SPEED) - 0.5) * 0.8;
+          const cosA = Math.cos(angle), sinA = Math.sin(angle);
+          const cosP = -sinA, sinP = cosA;
+
+          const originNoise = p.noise(cosA * E.NOISE_SCALE + tSpeed, sinA * E.NOISE_SCALE + tSpeed * 0.7, tSpeed * 0.3);
+          const originR = outerR + (originNoise - 0.5) * outerR * E.DEFORM_BASE;
+          const ox = centerX + cosA * originR;
+          const oy = centerY + sinA * originR;
+
+          const bandVal = bandVals[Math.floor((f / E.FILAMENT_COUNT) * 3)];
+          const filLen = vMin * (E.FILAMENT_LENGTH + bandVal * E.FILAMENT_FFT);
+          const hue = (E.HUE_BASE + hueShift + (f / E.FILAMENT_COUNT) * E.HUE_RANGE) % 360;
+
+          ctx.beginPath();
+          ctx.strokeStyle = hsbToRgba(hue, E.SAT_BASE + satBoost, E.BRI_BASE, E.FILAMENT_ALPHA * (0.5 + bandVal * 0.5));
+          ctx.lineWidth = E.FILAMENT_WEIGHT - bandVal * 0.3;
+
+          for (let s = 0; s <= segments; s++) {
+            const st = s / segments;
+            const curl = p.noise(f * 5 + 20, st * E.FILAMENT_CURL, t * E.FILAMENT_SPEED * 2) - 0.5;
+            const px = ox + cosA * st * filLen + cosP * curl * filLen * 0.4;
+            const py = oy + sinA * st * filLen + sinP * curl * filLen * 0.4;
+            if (s === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+        }
+      }
+
       // --- Dibujar una nebulosa (batch con drawImage) ---
       function drawNebula(p, particles, fftVal, color, centerX, centerY, t, seed) {
         const N = NEBULA;
@@ -573,11 +776,18 @@
         const baseR = p.min(p.width, p.height) * R.BASE_RADIUS;
         const ringSpacing = R.RING_SPACING * p.min(p.width, p.height) / 400;
 
+        // --- Dibujar Blob Etereo ---
+        if (ETHER_ENABLED) {
+          drawEther(p, bands, t, cx, cy);
+        }
+
         // --- Dibujar Nebulosas ---
-        drawNebula(p, nebula1, bands.bass, NEBULA.COLOR_1,
-          cx + p.width * NEBULA.POS_1_X, cy + p.height * NEBULA.POS_1_Y, t, 0);
-        drawNebula(p, nebula2, bands.treble, NEBULA.COLOR_2,
-          cx + p.width * NEBULA.POS_2_X, cy + p.height * NEBULA.POS_2_Y, t, 100);
+        if (PARTICLES_ENABLED) {
+          drawNebula(p, nebula1, bands.bass, NEBULA.COLOR_1,
+            cx + p.width * NEBULA.POS_1_X, cy + p.height * NEBULA.POS_1_Y, t, 0);
+          drawNebula(p, nebula2, bands.treble, NEBULA.COLOR_2,
+            cx + p.width * NEBULA.POS_2_X, cy + p.height * NEBULA.POS_2_Y, t, 100);
+        }
 
         p.noFill();
 
