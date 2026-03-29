@@ -192,7 +192,7 @@
       'audios/BARCA.mp3'
     ];
 
-    const CROSSFADE = 300;
+    let CROSSFADE = 300;
     // Orden aleatorio de tracks en cada carga
     const trackOrder = [0, 1, 2, 3, 4, 5];
     for (let i = trackOrder.length - 1; i > 0; i--) {
@@ -212,13 +212,13 @@
     let systemStarted = false;
     const audioElements = [];
     const targetVolumes = new Array(AUDIOS.length).fill(0);
-    const VOL_SMOOTH = 0.15;
+    let VOL_SMOOTH = 0.15;
 
     // --- FFT ---
     let audioCtx = null;
     let masterAnalyser = null;  // Analyser de la mezcla final
     let fftData = null;         // Uint8Array con espectro completo
-    const FFT_SIZE = 128;       // bins de frecuencia (128 bandas utiles)
+    let FFT_SIZE = 128;       // bins de frecuencia (128 bandas utiles)
     // Datos FFT extraidos (se actualizan cada frame)
     const fftBands = {
       bass: 0,      // 0-250 Hz (energia de graves)
@@ -850,6 +850,37 @@
         }
       }
     };
+    // --- Audio / Sonido ---
+    const audioParams = {
+      get crossfade() { return CROSSFADE; },
+      set crossfade(v) { CROSSFADE = v; },
+      get volSmooth() { return VOL_SMOOTH; },
+      set volSmooth(v) { VOL_SMOOTH = v; },
+      get smoothingFFT() { return masterAnalyser ? masterAnalyser.smoothingTimeConstant : 0.8; },
+      set smoothingFFT(v) { if (masterAnalyser) masterAnalyser.smoothingTimeConstant = v; },
+      get zone0min() { return ZONES[0].min; }, set zone0min(v) { ZONES[0].min = v; },
+      get zone0max() { return ZONES[0].max; }, set zone0max(v) { ZONES[0].max = v; ZONES[1].min = v; },
+      get zone1max() { return ZONES[1].max; }, set zone1max(v) { ZONES[1].max = v; ZONES[2].min = v; },
+      get zone2max() { return ZONES[2].max; }, set zone2max(v) { ZONES[2].max = v; ZONES[3].min = v; },
+      get zone3max() { return ZONES[3].max; }, set zone3max(v) { ZONES[3].max = v; ZONES[4].min = v; },
+      get zone4max() { return ZONES[4].max; }, set zone4max(v) { ZONES[4].max = v; ZONES[5].min = v; },
+      get zone5max() { return ZONES[5].max; }, set zone5max(v) { ZONES[5].max = v; }
+    };
+
+    const fAudio = gui.addFolder('Audio / Sonido');
+    fAudio.add(audioParams, 'crossfade', 50, 1000, 10).name('Crossfade (mm)');
+    fAudio.add(audioParams, 'volSmooth', 0.01, 0.5, 0.01).name('Suavizado Vol');
+    fAudio.add(audioParams, 'smoothingFFT', 0, 1, 0.05).name('Suavizado FFT');
+
+    const fZones = fAudio.addFolder('Zonas (mm)');
+    fZones.add(audioParams, 'zone0min', 0, 500, 10).name('Zona 1 min');
+    fZones.add(audioParams, 'zone0max', 200, 1500, 10).name('Zona 1→2');
+    fZones.add(audioParams, 'zone1max', 500, 2000, 10).name('Zona 2→3');
+    fZones.add(audioParams, 'zone2max', 1000, 2500, 10).name('Zona 3→4');
+    fZones.add(audioParams, 'zone3max', 1500, 3000, 10).name('Zona 4→5');
+    fZones.add(audioParams, 'zone4max', 2000, 3500, 10).name('Zona 5→6');
+    fZones.add(audioParams, 'zone5max', 2500, 4000, 10).name('Zona 6 max');
+
     gui.add(actions, 'guardar').name('Guardar');
     gui.add(actions, 'reset').name('Reset Defaults');
 
