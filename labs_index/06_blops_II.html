@@ -121,13 +121,6 @@
       z-index: 5;
       pointer-events: none;
     }
-
-    .lil-gui.root {
-      z-index: 10000 !important;
-      right: 0 !important;
-      margin: 0 !important;
-      width: 230px !important;
-    }
   </style>
   <script>
     // Opt #1: forzar DPI 1x en tablets/moviles para reducir carga GPU
@@ -137,7 +130,6 @@
     }
   </script>
   <script src="https://cdn.jsdelivr.net/npm/p5@1.11.7/lib/p5.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/lil-gui@0.19/dist/lil-gui.umd.min.js"></script>
 </head>
 
 <body>
@@ -670,167 +662,6 @@
       COLOR_POW: 2,               // exponente de contraste (menor = mas blanco, 1-8)
     };
     // =============================================
-  </script>
-
-  <script>
-    // =============================================
-    // GUI - lil-gui (parametros en tiempo real)
-    // =============================================
-
-    // --- LocalStorage: guardar defaults y cargar usuario ---
-    const LS_KEY_DEFAULT = 'jesidi_params_default';
-    const LS_KEY_USER = 'jesidi_params_user';
-
-    // Snapshot de un objeto (deep copy, soporta arrays)
-    function snapshotParams() {
-      return {
-        blobs: ORGANIC_BLOBS.map(b => Object.assign({}, b, { COLOR: [...b.COLOR] })),
-        rings: Object.assign({}, FFT_RINGS),
-        shader: Object.assign({}, SHADER_PARAMS),
-      };
-    }
-
-    // Aplicar snapshot a los objetos vivos
-    function applyParams(snap) {
-      snap.blobs.forEach((s, i) => {
-        const target = ORGANIC_BLOBS[i];
-        for (const k in s) {
-          if (k === 'COLOR') { target.COLOR[0] = s.COLOR[0]; target.COLOR[1] = s.COLOR[1]; target.COLOR[2] = s.COLOR[2]; }
-          else target[k] = s[k];
-        }
-      });
-      Object.assign(FFT_RINGS, snap.rings);
-      Object.assign(SHADER_PARAMS, snap.shader);
-    }
-
-    // Guardar defaults en localStorage (solo la primera vez)
-    if (!localStorage.getItem(LS_KEY_DEFAULT)) {
-      localStorage.setItem(LS_KEY_DEFAULT, JSON.stringify(snapshotParams()));
-    }
-
-    // Si hay config guardada por el usuario, aplicarla al inicio
-    const savedUser = localStorage.getItem(LS_KEY_USER);
-    if (savedUser) {
-      try { applyParams(JSON.parse(savedUser)); } catch(e) { console.warn('Error cargando config:', e); }
-    }
-
-    // --- Construir GUI ---
-    const gui = new lil.GUI({ title: 'Parametros' });
-
-    // Helpers para color hex <-> array
-    function rgbToHex(arr) { return '#' + arr.map(v => v.toString(16).padStart(2,'0')).join(''); }
-    function hexToRgb(hex, arr) {
-      arr[0] = parseInt(hex.slice(1,3), 16);
-      arr[1] = parseInt(hex.slice(3,5), 16);
-      arr[2] = parseInt(hex.slice(5,7), 16);
-    }
-    const colorTop = { hex: rgbToHex(ORGANIC_BLOBS[0].COLOR) };
-    const colorBot = { hex: rgbToHex(ORGANIC_BLOBS[1].COLOR) };
-
-    // Refrescar todos los controllers de la GUI
-    function refreshGUI() {
-      colorTop.hex = rgbToHex(ORGANIC_BLOBS[0].COLOR);
-      colorBot.hex = rgbToHex(ORGANIC_BLOBS[1].COLOR);
-      gui.controllersRecursive().forEach(c => c.updateDisplay());
-    }
-
-    // --- Blob Superior ---
-    const blobTop = ORGANIC_BLOBS[0];
-    const fTop = gui.addFolder('Blob Superior');
-    fTop.add(blobTop, 'POS_X', -1, 1, 0.01).name('Pos X');
-    fTop.add(blobTop, 'POS_Y', -1, 1, 0.01).name('Pos Y');
-    fTop.add(blobTop, 'RADIUS_X', 0.01, 0.5, 0.01).name('Radio X');
-    fTop.add(blobTop, 'RADIUS_Y', 0.01, 0.5, 0.01).name('Radio Y');
-    fTop.add(blobTop, 'ALPHA', 0, 255, 1).name('Opacidad');
-    fTop.add(blobTop, 'LAYERS', 1, 10, 1).name('Capas');
-    fTop.add(blobTop, 'NOISE_SCALE', 0.1, 3, 0.1).name('Noise Escala');
-    fTop.add(blobTop, 'NOISE_SPEED', 0, 1, 0.01).name('Noise Velocidad');
-    fTop.add(blobTop, 'DEFORM', 0, 1, 0.01).name('Deformacion');
-    fTop.add(blobTop, 'FFT_BREATHE', 0, 0.5, 0.01).name('FFT Respiracion');
-    fTop.add(blobTop, 'FFT_ALPHA', 0, 100, 1).name('FFT Opacidad');
-    fTop.add(blobTop, 'ROTATION', -Math.PI, Math.PI, 0.01).name('Rotacion');
-    fTop.add(blobTop, 'GRAIN', 0, 1, 0.05).name('Grano');
-    fTop.addColor(colorTop, 'hex').name('Color').onChange(v => hexToRgb(v, blobTop.COLOR));
-    fTop.close();
-
-    // --- Blob Inferior ---
-    const blobBot = ORGANIC_BLOBS[1];
-    const fBot = gui.addFolder('Blob Inferior');
-    fBot.add(blobBot, 'POS_X', -1, 1, 0.01).name('Pos X');
-    fBot.add(blobBot, 'POS_Y', -1, 1, 0.01).name('Pos Y');
-    fBot.add(blobBot, 'RADIUS_X', 0.01, 0.5, 0.01).name('Radio X');
-    fBot.add(blobBot, 'RADIUS_Y', 0.01, 0.5, 0.01).name('Radio Y');
-    fBot.add(blobBot, 'ALPHA', 0, 255, 1).name('Opacidad');
-    fBot.add(blobBot, 'LAYERS', 1, 10, 1).name('Capas');
-    fBot.add(blobBot, 'NOISE_SCALE', 0.1, 3, 0.1).name('Noise Escala');
-    fBot.add(blobBot, 'NOISE_SPEED', 0, 1, 0.01).name('Noise Velocidad');
-    fBot.add(blobBot, 'DEFORM', 0, 1, 0.01).name('Deformacion');
-    fBot.add(blobBot, 'FFT_BREATHE', 0, 0.5, 0.01).name('FFT Respiracion');
-    fBot.add(blobBot, 'FFT_ALPHA', 0, 100, 1).name('FFT Opacidad');
-    fBot.add(blobBot, 'ROTATION', -Math.PI, Math.PI, 0.01).name('Rotacion');
-    fBot.add(blobBot, 'GRAIN', 0, 1, 0.05).name('Grano');
-    fBot.addColor(colorBot, 'hex').name('Color').onChange(v => hexToRgb(v, blobBot.COLOR));
-    fBot.close();
-
-    // --- FFT Rings ---
-    const fRings = gui.addFolder('Anillos FFT');
-    fRings.add(FFT_RINGS, 'NUM_RINGS', 1, 30, 1).name('Num Anillos');
-    fRings.add(FFT_RINGS, 'CENTER_Y_OFFSET', -0.5, 0.5, 0.01).name('Centro Y');
-    fRings.add(FFT_RINGS, 'BASE_RADIUS', 0.01, 0.5, 0.01).name('Radio Base');
-    fRings.add(FFT_RINGS, 'RING_SPACING', 1, 20, 0.5).name('Espaciado');
-    fRings.add(FFT_RINGS, 'ROTATION_SPEED', 0, 1, 0.01).name('Vel Rotacion');
-    fRings.add(FFT_RINGS, 'ALPHA_BASE', 0, 255, 1).name('Opacidad Base');
-    fRings.add(FFT_RINGS, 'ALPHA_FFT_MULT', 0, 200, 1).name('Opacidad FFT');
-    fRings.add(FFT_RINGS, 'ALPHA_DECAY', 0, 20, 0.5).name('Decay Opacidad');
-    fRings.add(FFT_RINGS, 'STROKE_BASE', 0.5, 5, 0.1).name('Grosor Base');
-    fRings.add(FFT_RINGS, 'STROKE_DECAY', 0, 0.2, 0.01).name('Decay Grosor');
-    fRings.add(FFT_RINGS, 'AMP_BASE', 0, 150, 1).name('Amplitud Base');
-    fRings.add(FFT_RINGS, 'AMP_FFT_MULT', 0, 30, 0.5).name('Amplitud FFT');
-    fRings.add(FFT_RINGS, 'SMOOTH_PASSES', 0, 10, 1).name('Suavizado Espacial');
-    fRings.add(FFT_RINGS, 'SMOOTH_TEMPORAL', 0.05, 1, 0.05).name('Suavizado Temporal');
-    fRings.add(FFT_RINGS, 'FREQ_MULT', 1, 8, 1).name('Freq Mult');
-    fRings.close();
-
-    // --- Shader Torus ---
-    const fShader = gui.addFolder('Shader Torus');
-    fShader.add(SHADER_PARAMS, 'CENTER_X_OFFSET', -1, 1, 0.01).name('Centro X');
-    fShader.add(SHADER_PARAMS, 'CENTER_Y_OFFSET', -1, 1, 0.01).name('Centro Y');
-    fShader.add(SHADER_PARAMS, 'TORUS_SCALE', 0.1, 1.5, 0.01).name('Escala Torus');
-    fShader.add(SHADER_PARAMS, 'TORUS_THICKNESS', 0.01, 0.5, 0.01).name('Grosor Torus');
-    fShader.add(SHADER_PARAMS, 'SMALL_SPHERE_SIZE', 0, 0.5, 0.01).name('Esfera Tamaño');
-    fShader.add(SHADER_PARAMS, 'BLEND_AMOUNT', 0, 1, 0.01).name('Blend');
-    fShader.add(SHADER_PARAMS, 'NOISE_SPEED', 0, 1, 0.01).name('Noise Speed');
-    fShader.add(SHADER_PARAMS, 'ORBIT_RADIUS', 0, 0.5, 0.01).name('Orbita Radio');
-    fShader.add(SHADER_PARAMS, 'ORBIT_SPEED', 0, 1, 0.01).name('Orbita Velocidad');
-    fShader.add(SHADER_PARAMS, 'ORBIT_FFT_PUSH', 0, 3, 0.1).name('Orbita FFT Push');
-    fShader.add(SHADER_PARAMS, 'COLOR_RANGE', 0, 1, 0.01).name('Color Rango');
-    fShader.add(SHADER_PARAMS, 'COLOR_BASE', 0, 1, 0.01).name('Color Base');
-    fShader.add(SHADER_PARAMS, 'COLOR_POW', 0.5, 8, 0.1).name('Color Contraste');
-    fShader.close();
-
-    // --- Botones: Guardar y Reset ---
-    const actions = {
-      guardar: () => {
-        localStorage.setItem(LS_KEY_USER, JSON.stringify(snapshotParams()));
-        console.log('Config guardada');
-      },
-      reset: () => {
-        const defaults = JSON.parse(localStorage.getItem(LS_KEY_DEFAULT));
-        if (defaults) {
-          applyParams(defaults);
-          localStorage.removeItem(LS_KEY_USER);
-          refreshGUI();
-          console.log('Config reseteada a defaults');
-        }
-      }
-    };
-    gui.add(actions, 'guardar').name('Guardar');
-    gui.add(actions, 'reset').name('Reset Defaults');
-
-    // Toggle GUI con tecla H
-    document.addEventListener('keydown', e => {
-      if (e.key === 'h' || e.key === 'H') gui.show(gui._hidden);
-    });
   </script>
 
   <script>

@@ -121,13 +121,6 @@
       z-index: 5;
       pointer-events: none;
     }
-
-    .lil-gui.root {
-      z-index: 10000 !important;
-      right: 0 !important;
-      margin: 0 !important;
-      width: 230px !important;
-    }
   </style>
   <script>
     // Opt #1: forzar DPI 1x en tablets/moviles para reducir carga GPU
@@ -137,7 +130,6 @@
     }
   </script>
   <script src="https://cdn.jsdelivr.net/npm/p5@1.11.7/lib/p5.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/lil-gui@0.19/dist/lil-gui.umd.min.js"></script>
 </head>
 
 <body>
@@ -191,6 +183,8 @@
 
     // --- FFT ---
     let audioCtx = null;
+    const analysers = [];       // AnalyserNode por track
+    const sources = [];         // MediaElementSource por track
     let masterAnalyser = null;  // Analyser de la mezcla final
     let fftData = null;         // Uint8Array con espectro completo
     const FFT_SIZE = 128;       // bins de frecuencia (128 bandas utiles)
@@ -320,7 +314,9 @@
 
       // Conectar cada audio element directo al merger (sin analysers individuales)
       audioElements.forEach(a => {
-        audioCtx.createMediaElementSource(a).connect(merger);
+        const src = audioCtx.createMediaElementSource(a);
+        src.connect(merger);
+        sources.push(src);
       });
 
       // Analyser maestro en la mezcla final
@@ -388,45 +384,92 @@
 
   <script>
     // =============================================
+    // PARAMETROS AJUSTABLES - NEBULOSAS
     // =============================================
-    // PARAMETROS AJUSTABLES - BLOBS ORGANICOS (acuarela)
+    let PARTICLES_ENABLED = true; // activar/desactivar sistema de particulas (nebulosas)
+    let ETHER_ENABLED = true;      // activar/desactivar blob etereo
+
     // =============================================
-    const ORGANIC_BLOBS = [
-      { // Blob superior - crema/beige
-        POS_X: 0.0,
-        POS_Y: -0.55,
-        RADIUS_X: 0.14,          // radio horizontal (proporcion viewport)
-        RADIUS_Y: 0.09,          // radio vertical
-        COLOR: [245, 235, 215],   // crema
-        ALPHA: 45,                // opacidad base (0-255)
-        LAYERS: 5,                // capas de acuarela
-        NOISE_SCALE: 0.8,
-        NOISE_SPEED: 0.15,
-        DEFORM: 0.25,             // amplitud de deformacion
-        FFT_BAND: 'bass',        // banda FFT que lo modula
-        FFT_BREATHE: 0.08,       // expansion por FFT
-        FFT_ALPHA: 15,           // opacidad extra por FFT
-        ROTATION: -0.15,          // inclinacion base (rad)
-        GRAIN: 0.3,              // intensidad de grano/textura
-      },
-      { // Blob inferior - verde menta
-        POS_X: 0.0,
-        POS_Y: 0.55,
-        RADIUS_X: 0.15,
-        RADIUS_Y: 0.10,
-        COLOR: [140, 210, 180],   // verde menta
-        ALPHA: 40,
-        LAYERS: 5,
-        NOISE_SCALE: 0.9,
-        NOISE_SPEED: 0.12,
-        DEFORM: 0.28,
-        FFT_BAND: 'treble',
-        FFT_BREATHE: 0.10,
-        FFT_ALPHA: 12,
-        ROTATION: 0.1,
-        GRAIN: 0.3,
-      },
-    ];
+    // PARAMETROS AJUSTABLES - BLOB ETEREO
+    // =============================================
+    const ETHER = {
+      NUM_LAYERS: 7,              // capas concentricas del blob
+      BASE_RADIUS: 0.09,          // radio base (proporcion del viewport)
+      LAYER_SPACING: 6,          // separacion entre capas (px)
+      // Deformacion organica
+      NOISE_SCALE: 1.2,           // escala del noise (menor = formas mas grandes)
+      NOISE_SPEED: 0.3,           // velocidad de mutacion
+      NOISE_OCTAVES: 3,           // capas de detalle en la deformacion
+      DEFORM_BASE: 0.3,           // amplitud base de deformacion (proporcion del radio)
+      DEFORM_FFT: 0.5,            // deformacion extra por energia FFT
+      // Respiracion
+      BREATHE_SPEED: 0.4,         // velocidad de respiracion
+      BREATHE_BASS: 0.25,         // expansion por graves
+      // Apariencia
+      ALPHA_CORE: 30,             // opacidad de la capa interna (0-255)
+      ALPHA_OUTER: 8,             // opacidad de la capa externa (0-255)
+      STROKE_WEIGHT: 1.5,         // grosor de borde
+      STROKE_ALPHA: 50,           // opacidad del borde
+      GLOW_PASSES: 3,             // pasadas de glow (capas extra difusas)
+      GLOW_EXPAND: 12,            // expansion del glow (px por pasada)
+      GLOW_ALPHA: 6,              // opacidad del glow por pasada
+      // Color (HSB)
+      HUE_BASE: 360,              // tono base (0-360, 220=azul frio)
+      HUE_RANGE: 40,              // variacion de tono entre capas
+      HUE_FFT_SHIFT: 60,          // cambio de tono por energia
+      SAT_BASE: 0,                // saturacion base (0-100, 0=blanco)
+      SAT_FFT: 0,                 // saturacion extra por agudos
+      BRI_BASE: 100,               // brillo base (0-100)
+      // Filamentos (solo mitad superior)
+      FILAMENT_COUNT: 20,         // numero de filamentos
+      FILAMENT_LENGTH: 0.60,      // longitud (proporcion del viewport)
+      FILAMENT_FFT: 0.12,         // longitud extra por energia
+      FILAMENT_ALPHA: 80,        // opacidad de filamentos
+      FILAMENT_SPEED: 0.15,       // velocidad de ondulacion
+      FILAMENT_CURL: 2.5,         // curvatura de los filamentos
+      FILAMENT_WEIGHT: 1,         // grosor base de filamentos (px)
+      // Posicion
+      POS_X: 0.0,                 // posicion horizontal (proporcion, 0=centro)
+      POS_Y: -0.35,                // posicion vertical (proporcion, 0=centro)
+      // Vertices por capa (mas = mas suave)
+      RESOLUTION: 80,
+    };
+    // =============================================
+
+    const NEBULA = {
+      PARTICLE_COUNT: 50,        // particulas por nebulosa
+      BASE_RADIUS: 120,           // radio base de la nube (px)
+      RADIUS_FFT_MULT: 120,       // expansion extra por energia FFT
+      PARTICLE_SIZE_MIN: 10,       // tamaño minimo de particula
+      PARTICLE_SIZE_MAX: 25,      // tamaño maximo de particula
+      PARTICLE_SIZE_FFT: 20,      // tamaño extra por FFT
+      ALPHA_BASE: 150,             // opacidad base (0-255)
+      ALPHA_FFT_MULT: 80,         // opacidad extra por FFT
+      NOISE_SPEED: 0.5,           // velocidad del movimiento noise
+      NOISE_SCALE: 0.008,         // escala del noise (menor = mas suave)
+      DRIFT_AMOUNT: 40,           // amplitud de deriva por noise (px)
+      BREATHE_SPEED: 0.8,         // velocidad de respiracion (expansion/contraccion)
+      BREATHE_AMOUNT: 0.15,       // amplitud de respiracion (0-1)
+      COLOR_1: [255, 255, 255],   // color nebulosa 1 (blanco)
+      COLOR_2: [255, 255, 255],   // color nebulosa 2 (blanco)
+      // Posicion (proporcion del viewport, 0=centro)
+      POS_1_X: 0.0,               // nebulosa 1 - centrada horizontal
+      POS_1_Y: -0.38,             // nebulosa 1 - arriba
+      POS_2_X: 0.0,               // nebulosa 2 - centrada horizontal
+      POS_2_Y: 0.30,              // nebulosa 2 - abajo
+      // Movimiento orbital lento
+      ORBIT_RADIUS: 20,           // radio de orbita lenta (px)
+      ORBIT_SPEED: 0.08,          // velocidad orbital
+      // Filamentos verticales (nebulosa inferior)
+      VFIL_ENABLED: true,         // activar/desactivar filamentos verticales
+      VFIL_LENGTH_MIN: 40,        // longitud minima (px)
+      VFIL_LENGTH_MAX: 180,       // longitud maxima (px)
+      VFIL_LENGTH_FFT: 60,        // longitud extra por energia FFT
+      VFIL_ALPHA: 80,             // opacidad base (0-255)
+      VFIL_WEIGHT: 1,             // grosor (px)
+      VFIL_WAVE_SPEED: 0.4,       // velocidad de ondulacion lateral
+      VFIL_WAVE_AMP: 3,           // amplitud de ondulacion lateral (px)
+    };
     // =============================================
 
     const FFT_RINGS = {
@@ -452,6 +495,47 @@
     const fftViz = (p) => {
       let smoothedFFT = null; // buffer para suavizado temporal
 
+      // --- Nebulosas: generar particulas con distribucion gaussiana ---
+      function gaussRandom() {
+        // Box-Muller transform
+        let u = 0, v = 0;
+        while (u === 0) u = Math.random();
+        while (v === 0) v = Math.random();
+        return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+      }
+
+      function createNebula(count) {
+        const particles = [];
+        for (let i = 0; i < count; i++) {
+          // Posicion gaussiana (la mayoria cerca del centro)
+          const angle = Math.random() * Math.PI * 2;
+          const dist = Math.abs(gaussRandom()) * 0.5; // 0-~1.5, concentrado en 0-0.5
+          particles.push({
+            ox: Math.cos(angle) * dist,  // offset normalizado (-1 a 1)
+            oy: Math.sin(angle) * dist,
+            size: Math.random(),          // 0-1, se escala al dibujar
+            phase: Math.random() * Math.PI * 2, // fase individual
+          });
+        }
+        return particles;
+      }
+
+      const nebula1 = createNebula(NEBULA.PARTICLE_COUNT);
+      const nebula2 = createNebula(NEBULA.PARTICLE_COUNT);
+
+      // Pre-renderizar textura de particula con degradado radial (evita paths por frame)
+      const particleTex = document.createElement('canvas');
+      const TEX_SIZE = 64;
+      particleTex.width = TEX_SIZE;
+      particleTex.height = TEX_SIZE;
+      const ptCtx = particleTex.getContext('2d');
+      const grad = ptCtx.createRadialGradient(TEX_SIZE/2, TEX_SIZE/2, 0, TEX_SIZE/2, TEX_SIZE/2, TEX_SIZE/2);
+      grad.addColorStop(0, 'rgba(255,255,255,1)');
+      grad.addColorStop(0.5, 'rgba(255,255,255,0.3)');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      ptCtx.fillStyle = grad;
+      ptCtx.fillRect(0, 0, TEX_SIZE, TEX_SIZE);
+
       // Suavizado espacial: moving average circular
       function smoothSpatial(arr, passes) {
         let src = arr;
@@ -471,101 +555,254 @@
         return src;
       }
 
-      // --- Blobs organicos estilo acuarela ---
-      // Pre-computar LUT para los blobs (60 vertices por blob)
-      const _blobRes = 60;
-      const _blobCos = new Float32Array(_blobRes);
-      const _blobSin = new Float32Array(_blobRes);
-      for (let i = 0; i < _blobRes; i++) {
-        const a = (i / _blobRes) * Math.PI * 2;
-        _blobCos[i] = Math.cos(a);
-        _blobSin[i] = Math.sin(a);
+      // --- Blob etereo (optimizado: canvas2D directo, LUTs, noise cacheado) ---
+      // Pre-computar lookup table de angulos
+      const _etherRes = ETHER.RESOLUTION;
+      const _etherAngles = new Float32Array(_etherRes);
+      const _etherCos = new Float32Array(_etherRes);
+      const _etherSin = new Float32Array(_etherRes);
+      for (let i = 0; i < _etherRes; i++) {
+        _etherAngles[i] = (i / _etherRes) * Math.PI * 2;
+        _etherCos[i] = Math.cos(_etherAngles[i]);
+        _etherSin[i] = Math.sin(_etherAngles[i]);
+      }
+      // Buffer reutilizable para noise por angulo (evita recalcular por capa)
+      const _etherNoise = new Float32Array(_etherRes);
+
+      // HSB a CSS rgba (evita colorMode de p5)
+      function hsbToRgba(h, s, b, a255) {
+        h = ((h % 360) + 360) % 360;
+        s /= 100; b /= 100;
+        const c = b * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = b - c;
+        let r, g, bl;
+        if (h < 60)       { r = c; g = x; bl = 0; }
+        else if (h < 120) { r = x; g = c; bl = 0; }
+        else if (h < 180) { r = 0; g = c; bl = x; }
+        else if (h < 240) { r = 0; g = x; bl = c; }
+        else if (h < 300) { r = x; g = 0; bl = c; }
+        else               { r = c; g = 0; bl = x; }
+        return `rgba(${(r+m)*255|0},${(g+m)*255|0},${(bl+m)*255|0},${a255/255})`;
       }
 
-      function drawOrganicBlob(p, cfg, bands, t, cx, cy) {
+      function drawEther(p, bands, t, cx, cy) {
+        const E = ETHER;
         const ctx = p.drawingContext;
         const vMin = Math.min(p.width, p.height);
-        const fftVal = bands[cfg.FFT_BAND] || 0;
+        const baseR = vMin * E.BASE_RADIUS;
+        const breathe = 1 + Math.sin(t * E.BREATHE_SPEED) * 0.1 + bands.bass * E.BREATHE_BASS;
+        const hueShift = bands.energy * E.HUE_FFT_SHIFT;
+        const satBoost = bands.treble * E.SAT_FFT;
+        const centerX = cx + p.width * E.POS_X;
+        const centerY = cy + p.height * E.POS_Y;
+        const tSpeed = t * E.NOISE_SPEED;
 
-        const centerX = cx + vMin * cfg.POS_X;
-        const centerY = cy + vMin * cfg.POS_Y;
-        const breathe = 1 + fftVal * cfg.FFT_BREATHE;
-        const rx = vMin * cfg.RADIUS_X * breathe;
-        const ry = vMin * cfg.RADIUS_Y * breathe;
-        const tSpeed = t * cfg.NOISE_SPEED;
-        const [cr, cg, cb] = cfg.COLOR;
+        // Calcular noise base por angulo (1 vez, reutilizado por capas)
+        for (let i = 0; i < _etherRes; i++) {
+          const cs = _etherCos[i], sn = _etherSin[i];
+          let nv = 0, amp = 1, freq = E.NOISE_SCALE;
+          for (let o = 0; o < E.NOISE_OCTAVES; o++) {
+            nv += p.noise(cs * freq + tSpeed, sn * freq + tSpeed * 0.7, tSpeed * 0.3 + o * 5) * amp;
+            amp *= 0.5; freq *= 2;
+          }
+          _etherNoise[i] = nv / 1.75;
+        }
 
-        ctx.save();
-        ctx.translate(centerX, centerY);
-        ctx.rotate(cfg.ROTATION + Math.sin(t * 0.1) * 0.03);
+        // Funcion para trazar path de una capa (canvas2D directo con quadratic curves)
+        function traceBlobPath(layerIdx, radiusOffset, extraDeform) {
+          const r = (baseR + layerIdx * E.LAYER_SPACING + radiusOffset) * breathe;
+          const deform = (E.DEFORM_BASE + bands.energy * E.DEFORM_FFT + extraDeform) * r;
+          // Offset de noise por capa (barato, evita recalcular todo)
+          const layerOff = layerIdx * 0.15;
 
-        // Dibujar multiples capas con variaciones para efecto acuarela
-        for (let layer = 0; layer < cfg.LAYERS; layer++) {
-          const layerT = layer / cfg.LAYERS;
-          // Cada capa tiene offset de noise y tamaño ligeramente distinto
-          const layerScale = 1 - layerT * 0.12;
-          const layerSeed = layer * 7.7;
-          const alpha = (cfg.ALPHA + fftVal * cfg.FFT_ALPHA) * (1 - layerT * 0.3);
+          // Calcular puntos
+          const n = _etherRes;
+          // Primer punto
+          let nv0 = _etherNoise[0] + layerOff * (p.noise(tSpeed + layerIdx * 10) - 0.5);
+          let dr0 = r + (nv0 - 0.5) * deform * 2;
+          const x0 = centerX + _etherCos[0] * dr0;
+          const y0 = centerY + _etherSin[0] * dr0;
 
           ctx.beginPath();
-          // Primer punto
-          const n0 = p.noise(_blobCos[0] * cfg.NOISE_SCALE + tSpeed, _blobSin[0] * cfg.NOISE_SCALE + tSpeed * 0.6, layerSeed);
-          const dr0x = rx * layerScale * (1 + (n0 - 0.5) * cfg.DEFORM * 2);
-          const dr0y = ry * layerScale * (1 + (n0 - 0.5) * cfg.DEFORM * 2);
-          const x0 = _blobCos[0] * dr0x;
-          const y0 = _blobSin[0] * dr0y;
+          // Empezar en el punto medio entre el ultimo y el primero para cerrar suave
+          let nvLast = _etherNoise[n - 1] + layerOff * (p.noise(tSpeed + layerIdx * 10 + 0.7) - 0.5);
+          let drLast = r + (nvLast - 0.5) * deform * 2;
+          const xLast = centerX + _etherCos[n - 1] * drLast;
+          const yLast = centerY + _etherSin[n - 1] * drLast;
+          ctx.moveTo((xLast + x0) / 2, (yLast + y0) / 2);
 
-          // Punto previo para inicio suave
-          const nL = p.noise(_blobCos[_blobRes-1] * cfg.NOISE_SCALE + tSpeed, _blobSin[_blobRes-1] * cfg.NOISE_SCALE + tSpeed * 0.6, layerSeed);
-          const drLx = rx * layerScale * (1 + (nL - 0.5) * cfg.DEFORM * 2);
-          const drLy = ry * layerScale * (1 + (nL - 0.5) * cfg.DEFORM * 2);
-          const xL = _blobCos[_blobRes-1] * drLx;
-          const yL = _blobSin[_blobRes-1] * drLy;
-          ctx.moveTo((xL + x0) / 2, (yL + y0) / 2);
-
-          for (let i = 0; i < _blobRes; i++) {
-            const next = (i + 1) % _blobRes;
-            const ni = p.noise(_blobCos[i] * cfg.NOISE_SCALE + tSpeed, _blobSin[i] * cfg.NOISE_SCALE + tSpeed * 0.6, layerSeed);
-            const nn = p.noise(_blobCos[next] * cfg.NOISE_SCALE + tSpeed, _blobSin[next] * cfg.NOISE_SCALE + tSpeed * 0.6, layerSeed);
-            const dix = rx * layerScale * (1 + (ni - 0.5) * cfg.DEFORM * 2);
-            const diy = ry * layerScale * (1 + (ni - 0.5) * cfg.DEFORM * 2);
-            const dnx = rx * layerScale * (1 + (nn - 0.5) * cfg.DEFORM * 2);
-            const dny = ry * layerScale * (1 + (nn - 0.5) * cfg.DEFORM * 2);
-            const xi = _blobCos[i] * dix;
-            const yi = _blobSin[i] * diy;
-            const xn = _blobCos[next] * dnx;
-            const yn = _blobSin[next] * dny;
+          for (let i = 0; i < n; i++) {
+            const next = (i + 1) % n;
+            const nvi = _etherNoise[i] + layerOff * (p.noise(tSpeed + layerIdx * 10 + i * 0.01) - 0.5);
+            const nvn = _etherNoise[next] + layerOff * (p.noise(tSpeed + layerIdx * 10 + next * 0.01) - 0.5);
+            const dri = r + (nvi - 0.5) * deform * 2;
+            const drn = r + (nvn - 0.5) * deform * 2;
+            const xi = centerX + _etherCos[i] * dri;
+            const yi = centerY + _etherSin[i] * dri;
+            const xn = centerX + _etherCos[next] * drn;
+            const yn = centerY + _etherSin[next] * drn;
             ctx.quadraticCurveTo(xi, yi, (xi + xn) / 2, (yi + yn) / 2);
           }
           ctx.closePath();
+        }
 
-          // Fill con color semitransparente
-          ctx.fillStyle = `rgba(${cr},${cg},${cb},${alpha / 255})`;
+        // Glow exterior
+        for (let g = E.GLOW_PASSES; g >= 1; g--) {
+          traceBlobPath(E.NUM_LAYERS - 1, g * E.GLOW_EXPAND, 0.05 * g);
+          ctx.fillStyle = hsbToRgba(E.HUE_BASE + hueShift + E.HUE_RANGE, E.SAT_BASE + satBoost, E.BRI_BASE, E.GLOW_ALPHA);
+          ctx.fill();
+        }
+
+        // Capas del blob (exterior a interior)
+        const maxLayer = Math.max(1, E.NUM_LAYERS - 1);
+        for (let layer = E.NUM_LAYERS - 1; layer >= 0; layer--) {
+          traceBlobPath(layer, 0, 0);
+          const layerT = layer / maxLayer;
+          const alpha = E.ALPHA_CORE + (E.ALPHA_OUTER - E.ALPHA_CORE) * layerT;
+          const hue = (E.HUE_BASE + hueShift + layerT * E.HUE_RANGE) % 360;
+          const sat = E.SAT_BASE + satBoost * (1 - layerT);
+
+          ctx.fillStyle = hsbToRgba(hue, sat, E.BRI_BASE, alpha);
           ctx.fill();
 
-          // Borde sutil solo en la capa exterior
-          if (layer === 0) {
-            ctx.strokeStyle = `rgba(${cr * 0.8 | 0},${cg * 0.8 | 0},${cb * 0.8 | 0},${(alpha * 0.6) / 255})`;
-            ctx.lineWidth = 1.2;
+          // Borde sutil en capas intermedias
+          if (layer > 0 && layer < E.NUM_LAYERS - 1) {
+            ctx.strokeStyle = hsbToRgba(hue, sat * 0.5, 100, E.STROKE_ALPHA * (1 - layerT));
+            ctx.lineWidth = E.STROKE_WEIGHT * (1 - layerT * 0.7);
             ctx.stroke();
           }
         }
 
-        // Textura de grano (acuarela) - puntos aleatorios dentro del blob
-        if (cfg.GRAIN > 0) {
-          const grainCount = 80;
-          for (let i = 0; i < grainCount; i++) {
-            const ga = p.noise(i * 0.3, t * 0.05) * Math.PI * 2;
-            const gd = p.noise(i * 0.3 + 50, t * 0.05) * 0.8;
-            const gx = Math.cos(ga) * rx * gd;
-            const gy = Math.sin(ga) * ry * gd;
-            const galpha = p.noise(i * 0.7, t * 0.1) * cfg.GRAIN;
-            ctx.fillStyle = `rgba(255,255,255,${galpha * 0.3})`;
-            ctx.fillRect(gx - 1, gy - 1, 2, 2);
-          }
-        }
+        // Filamentos (solo mitad superior: angulos PI a 2*PI = hacia arriba)
+        const outerR = (baseR + (E.NUM_LAYERS - 1) * E.LAYER_SPACING) * breathe;
+        const bandVals = [bands.bass, bands.mid, bands.treble];
+        const segments = 10;
 
-        ctx.restore();
+        for (let f = 0; f < E.FILAMENT_COUNT; f++) {
+          // Distribuir solo en la mitad superior (PI a 2*PI)
+          const baseAngle = Math.PI + (f / E.FILAMENT_COUNT) * Math.PI;
+          const angle = baseAngle + (p.noise(f * 3, t * E.FILAMENT_SPEED) - 0.5) * 0.8;
+          const cosA = Math.cos(angle), sinA = Math.sin(angle);
+          const cosP = -sinA, sinP = cosA;
+
+          const originNoise = p.noise(cosA * E.NOISE_SCALE + tSpeed, sinA * E.NOISE_SCALE + tSpeed * 0.7, tSpeed * 0.3);
+          const originR = outerR + (originNoise - 0.5) * outerR * E.DEFORM_BASE;
+          const ox = centerX + cosA * originR;
+          const oy = centerY + sinA * originR;
+
+          const bandVal = bandVals[Math.floor((f / E.FILAMENT_COUNT) * 3)];
+          const filLen = vMin * (E.FILAMENT_LENGTH + bandVal * E.FILAMENT_FFT);
+          const hue = (E.HUE_BASE + hueShift + (f / E.FILAMENT_COUNT) * E.HUE_RANGE) % 360;
+
+          ctx.beginPath();
+          ctx.strokeStyle = hsbToRgba(hue, E.SAT_BASE + satBoost, E.BRI_BASE, E.FILAMENT_ALPHA * (0.5 + bandVal * 0.5));
+          ctx.lineWidth = E.FILAMENT_WEIGHT - bandVal * 0.3;
+
+          for (let s = 0; s <= segments; s++) {
+            const st = s / segments;
+            const curl = p.noise(f * 5 + 20, st * E.FILAMENT_CURL, t * E.FILAMENT_SPEED * 2) - 0.5;
+            const px = ox + cosA * st * filLen + cosP * curl * filLen * 0.4;
+            const py = oy + sinA * st * filLen + sinP * curl * filLen * 0.4;
+            if (s === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+        }
+      }
+
+      // --- Dibujar una nebulosa (batch con drawImage) ---
+      function drawNebula(p, particles, fftVal, color, centerX, centerY, t, seed) {
+        const N = NEBULA;
+        const ctx = p.drawingContext;
+
+        // Orbita lenta del centro
+        const ox = centerX + Math.cos(t * N.ORBIT_SPEED + seed) * N.ORBIT_RADIUS;
+        const oy = centerY + Math.sin(t * N.ORBIT_SPEED * 0.7 + seed) * N.ORBIT_RADIUS;
+
+        // Respiracion: expansion/contraccion ciclica
+        const breathe = 1 + Math.sin(t * N.BREATHE_SPEED + seed) * N.BREATHE_AMOUNT;
+
+        // Radio actual
+        const radius = (N.BASE_RADIUS + fftVal * N.RADIUS_FFT_MULT) * breathe;
+
+        for (let i = 0; i < particles.length; i++) {
+          const pt = particles[i];
+
+          // Posicion base
+          let px = pt.ox * radius;
+          let py = pt.oy * radius;
+
+          // Deriva con Perlin noise
+          const nx = p.noise(pt.ox * 2 + seed, pt.oy * 2, t * N.NOISE_SPEED);
+          const ny = p.noise(pt.ox * 2 + seed + 50, pt.oy * 2 + 50, t * N.NOISE_SPEED);
+          px += (nx - 0.5) * N.DRIFT_AMOUNT * 2;
+          py += (ny - 0.5) * N.DRIFT_AMOUNT * 2;
+
+          // Tamaño de particula
+          const size = N.PARTICLE_SIZE_MIN +
+            pt.size * (N.PARTICLE_SIZE_MAX - N.PARTICLE_SIZE_MIN) +
+            fftVal * N.PARTICLE_SIZE_FFT;
+
+          // Opacidad: mas opaca cerca del centro, modulada por FFT
+          const distFromCenter = Math.sqrt(pt.ox * pt.ox + pt.oy * pt.oy);
+          const falloff = Math.max(0, 1 - distFromCenter * 1.2);
+          const alpha = ((N.ALPHA_BASE + fftVal * N.ALPHA_FFT_MULT) * falloff) / 255;
+
+          ctx.globalAlpha = alpha;
+          ctx.drawImage(particleTex, ox + px - size/2, oy + py - size/2, size, size);
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // --- Filamentos verticales desde particulas inferiores ---
+      function drawVerticalFilaments(p, particles, fftVal, centerX, centerY, t, seed) {
+        const N = NEBULA;
+        const ctx = p.drawingContext;
+
+        const ox = centerX + Math.cos(t * N.ORBIT_SPEED + seed) * N.ORBIT_RADIUS;
+        const oy = centerY + Math.sin(t * N.ORBIT_SPEED * 0.7 + seed) * N.ORBIT_RADIUS;
+        const breathe = 1 + Math.sin(t * N.BREATHE_SPEED + seed) * N.BREATHE_AMOUNT;
+        const radius = (N.BASE_RADIUS + fftVal * N.RADIUS_FFT_MULT) * breathe;
+
+        const segments = 8;
+
+        for (let i = 0; i < particles.length; i++) {
+          const pt = particles[i];
+
+          // Posicion de la particula (misma logica que drawNebula)
+          let px = pt.ox * radius;
+          let py = pt.oy * radius;
+          const nx = p.noise(pt.ox * 2 + seed, pt.oy * 2, t * N.NOISE_SPEED);
+          const ny = p.noise(pt.ox * 2 + seed + 50, pt.oy * 2 + 50, t * N.NOISE_SPEED);
+          px += (nx - 0.5) * N.DRIFT_AMOUNT * 2;
+          py += (ny - 0.5) * N.DRIFT_AMOUNT * 2;
+
+          const startX = ox + px;
+          const startY = oy + py;
+
+          // Longitud variable por particula + FFT
+          const filLen = N.VFIL_LENGTH_MIN +
+            pt.size * (N.VFIL_LENGTH_MAX - N.VFIL_LENGTH_MIN) +
+            fftVal * N.VFIL_LENGTH_FFT;
+
+          // Opacidad: hereda falloff de la particula
+          const distFromCenter = Math.sqrt(pt.ox * pt.ox + pt.oy * pt.oy);
+          const falloff = Math.max(0, 1 - distFromCenter * 1.2);
+          const alpha = (N.VFIL_ALPHA * falloff) / 255;
+          if (alpha < 0.01) continue;
+
+          ctx.beginPath();
+          ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+          ctx.lineWidth = N.VFIL_WEIGHT;
+
+          for (let s = 0; s <= segments; s++) {
+            const st = s / segments;
+            // Ondulacion lateral sutil con noise
+            const wave = Math.sin(t * N.VFIL_WAVE_SPEED + pt.phase + st * 4) * N.VFIL_WAVE_AMP * st;
+            const fx = startX + wave;
+            const fy = startY + st * filLen;
+            if (s === 0) ctx.moveTo(fx, fy); else ctx.lineTo(fx, fy);
+          }
+          ctx.stroke();
+        }
       }
 
       p.setup = () => {
@@ -597,14 +834,26 @@
 
         const t = p.millis() / 1000;
         const cx = p.width / 2;
-        const vMin = p.min(p.width, p.height);
-        const cy = p.height / 2 + vMin * R.CENTER_Y_OFFSET;
-        const baseR = vMin * R.BASE_RADIUS;
-        const ringSpacing = R.RING_SPACING * vMin / 400;
+        const cy = p.height / 2 + p.height * R.CENTER_Y_OFFSET;
+        const baseR = p.min(p.width, p.height) * R.BASE_RADIUS;
+        const ringSpacing = R.RING_SPACING * p.min(p.width, p.height) / 400;
 
-        // --- Dibujar Blobs Organicos (detras de todo) ---
-        for (let b = 0; b < ORGANIC_BLOBS.length; b++) {
-          drawOrganicBlob(p, ORGANIC_BLOBS[b], bands, t, cx, cy);
+        // --- Dibujar Blob Etereo ---
+        if (ETHER_ENABLED) {
+          drawEther(p, bands, t, cx, cy);
+        }
+
+        // --- Dibujar Nebulosas ---
+        if (PARTICLES_ENABLED) {
+          drawNebula(p, nebula1, bands.bass, NEBULA.COLOR_1,
+            cx + p.width * NEBULA.POS_1_X, cy + p.height * NEBULA.POS_1_Y, t, 0);
+          drawNebula(p, nebula2, bands.treble, NEBULA.COLOR_2,
+            cx + p.width * NEBULA.POS_2_X, cy + p.height * NEBULA.POS_2_Y, t, 100);
+          // Filamentos verticales desde nebulosa inferior
+          if (NEBULA.VFIL_ENABLED) {
+            drawVerticalFilaments(p, nebula2, bands.treble,
+              cx + p.width * NEBULA.POS_2_X, cy + p.height * NEBULA.POS_2_Y, t, 100);
+          }
         }
 
         p.noFill();
@@ -670,167 +919,6 @@
       COLOR_POW: 2,               // exponente de contraste (menor = mas blanco, 1-8)
     };
     // =============================================
-  </script>
-
-  <script>
-    // =============================================
-    // GUI - lil-gui (parametros en tiempo real)
-    // =============================================
-
-    // --- LocalStorage: guardar defaults y cargar usuario ---
-    const LS_KEY_DEFAULT = 'jesidi_params_default';
-    const LS_KEY_USER = 'jesidi_params_user';
-
-    // Snapshot de un objeto (deep copy, soporta arrays)
-    function snapshotParams() {
-      return {
-        blobs: ORGANIC_BLOBS.map(b => Object.assign({}, b, { COLOR: [...b.COLOR] })),
-        rings: Object.assign({}, FFT_RINGS),
-        shader: Object.assign({}, SHADER_PARAMS),
-      };
-    }
-
-    // Aplicar snapshot a los objetos vivos
-    function applyParams(snap) {
-      snap.blobs.forEach((s, i) => {
-        const target = ORGANIC_BLOBS[i];
-        for (const k in s) {
-          if (k === 'COLOR') { target.COLOR[0] = s.COLOR[0]; target.COLOR[1] = s.COLOR[1]; target.COLOR[2] = s.COLOR[2]; }
-          else target[k] = s[k];
-        }
-      });
-      Object.assign(FFT_RINGS, snap.rings);
-      Object.assign(SHADER_PARAMS, snap.shader);
-    }
-
-    // Guardar defaults en localStorage (solo la primera vez)
-    if (!localStorage.getItem(LS_KEY_DEFAULT)) {
-      localStorage.setItem(LS_KEY_DEFAULT, JSON.stringify(snapshotParams()));
-    }
-
-    // Si hay config guardada por el usuario, aplicarla al inicio
-    const savedUser = localStorage.getItem(LS_KEY_USER);
-    if (savedUser) {
-      try { applyParams(JSON.parse(savedUser)); } catch(e) { console.warn('Error cargando config:', e); }
-    }
-
-    // --- Construir GUI ---
-    const gui = new lil.GUI({ title: 'Parametros' });
-
-    // Helpers para color hex <-> array
-    function rgbToHex(arr) { return '#' + arr.map(v => v.toString(16).padStart(2,'0')).join(''); }
-    function hexToRgb(hex, arr) {
-      arr[0] = parseInt(hex.slice(1,3), 16);
-      arr[1] = parseInt(hex.slice(3,5), 16);
-      arr[2] = parseInt(hex.slice(5,7), 16);
-    }
-    const colorTop = { hex: rgbToHex(ORGANIC_BLOBS[0].COLOR) };
-    const colorBot = { hex: rgbToHex(ORGANIC_BLOBS[1].COLOR) };
-
-    // Refrescar todos los controllers de la GUI
-    function refreshGUI() {
-      colorTop.hex = rgbToHex(ORGANIC_BLOBS[0].COLOR);
-      colorBot.hex = rgbToHex(ORGANIC_BLOBS[1].COLOR);
-      gui.controllersRecursive().forEach(c => c.updateDisplay());
-    }
-
-    // --- Blob Superior ---
-    const blobTop = ORGANIC_BLOBS[0];
-    const fTop = gui.addFolder('Blob Superior');
-    fTop.add(blobTop, 'POS_X', -1, 1, 0.01).name('Pos X');
-    fTop.add(blobTop, 'POS_Y', -1, 1, 0.01).name('Pos Y');
-    fTop.add(blobTop, 'RADIUS_X', 0.01, 0.5, 0.01).name('Radio X');
-    fTop.add(blobTop, 'RADIUS_Y', 0.01, 0.5, 0.01).name('Radio Y');
-    fTop.add(blobTop, 'ALPHA', 0, 255, 1).name('Opacidad');
-    fTop.add(blobTop, 'LAYERS', 1, 10, 1).name('Capas');
-    fTop.add(blobTop, 'NOISE_SCALE', 0.1, 3, 0.1).name('Noise Escala');
-    fTop.add(blobTop, 'NOISE_SPEED', 0, 1, 0.01).name('Noise Velocidad');
-    fTop.add(blobTop, 'DEFORM', 0, 1, 0.01).name('Deformacion');
-    fTop.add(blobTop, 'FFT_BREATHE', 0, 0.5, 0.01).name('FFT Respiracion');
-    fTop.add(blobTop, 'FFT_ALPHA', 0, 100, 1).name('FFT Opacidad');
-    fTop.add(blobTop, 'ROTATION', -Math.PI, Math.PI, 0.01).name('Rotacion');
-    fTop.add(blobTop, 'GRAIN', 0, 1, 0.05).name('Grano');
-    fTop.addColor(colorTop, 'hex').name('Color').onChange(v => hexToRgb(v, blobTop.COLOR));
-    fTop.close();
-
-    // --- Blob Inferior ---
-    const blobBot = ORGANIC_BLOBS[1];
-    const fBot = gui.addFolder('Blob Inferior');
-    fBot.add(blobBot, 'POS_X', -1, 1, 0.01).name('Pos X');
-    fBot.add(blobBot, 'POS_Y', -1, 1, 0.01).name('Pos Y');
-    fBot.add(blobBot, 'RADIUS_X', 0.01, 0.5, 0.01).name('Radio X');
-    fBot.add(blobBot, 'RADIUS_Y', 0.01, 0.5, 0.01).name('Radio Y');
-    fBot.add(blobBot, 'ALPHA', 0, 255, 1).name('Opacidad');
-    fBot.add(blobBot, 'LAYERS', 1, 10, 1).name('Capas');
-    fBot.add(blobBot, 'NOISE_SCALE', 0.1, 3, 0.1).name('Noise Escala');
-    fBot.add(blobBot, 'NOISE_SPEED', 0, 1, 0.01).name('Noise Velocidad');
-    fBot.add(blobBot, 'DEFORM', 0, 1, 0.01).name('Deformacion');
-    fBot.add(blobBot, 'FFT_BREATHE', 0, 0.5, 0.01).name('FFT Respiracion');
-    fBot.add(blobBot, 'FFT_ALPHA', 0, 100, 1).name('FFT Opacidad');
-    fBot.add(blobBot, 'ROTATION', -Math.PI, Math.PI, 0.01).name('Rotacion');
-    fBot.add(blobBot, 'GRAIN', 0, 1, 0.05).name('Grano');
-    fBot.addColor(colorBot, 'hex').name('Color').onChange(v => hexToRgb(v, blobBot.COLOR));
-    fBot.close();
-
-    // --- FFT Rings ---
-    const fRings = gui.addFolder('Anillos FFT');
-    fRings.add(FFT_RINGS, 'NUM_RINGS', 1, 30, 1).name('Num Anillos');
-    fRings.add(FFT_RINGS, 'CENTER_Y_OFFSET', -0.5, 0.5, 0.01).name('Centro Y');
-    fRings.add(FFT_RINGS, 'BASE_RADIUS', 0.01, 0.5, 0.01).name('Radio Base');
-    fRings.add(FFT_RINGS, 'RING_SPACING', 1, 20, 0.5).name('Espaciado');
-    fRings.add(FFT_RINGS, 'ROTATION_SPEED', 0, 1, 0.01).name('Vel Rotacion');
-    fRings.add(FFT_RINGS, 'ALPHA_BASE', 0, 255, 1).name('Opacidad Base');
-    fRings.add(FFT_RINGS, 'ALPHA_FFT_MULT', 0, 200, 1).name('Opacidad FFT');
-    fRings.add(FFT_RINGS, 'ALPHA_DECAY', 0, 20, 0.5).name('Decay Opacidad');
-    fRings.add(FFT_RINGS, 'STROKE_BASE', 0.5, 5, 0.1).name('Grosor Base');
-    fRings.add(FFT_RINGS, 'STROKE_DECAY', 0, 0.2, 0.01).name('Decay Grosor');
-    fRings.add(FFT_RINGS, 'AMP_BASE', 0, 150, 1).name('Amplitud Base');
-    fRings.add(FFT_RINGS, 'AMP_FFT_MULT', 0, 30, 0.5).name('Amplitud FFT');
-    fRings.add(FFT_RINGS, 'SMOOTH_PASSES', 0, 10, 1).name('Suavizado Espacial');
-    fRings.add(FFT_RINGS, 'SMOOTH_TEMPORAL', 0.05, 1, 0.05).name('Suavizado Temporal');
-    fRings.add(FFT_RINGS, 'FREQ_MULT', 1, 8, 1).name('Freq Mult');
-    fRings.close();
-
-    // --- Shader Torus ---
-    const fShader = gui.addFolder('Shader Torus');
-    fShader.add(SHADER_PARAMS, 'CENTER_X_OFFSET', -1, 1, 0.01).name('Centro X');
-    fShader.add(SHADER_PARAMS, 'CENTER_Y_OFFSET', -1, 1, 0.01).name('Centro Y');
-    fShader.add(SHADER_PARAMS, 'TORUS_SCALE', 0.1, 1.5, 0.01).name('Escala Torus');
-    fShader.add(SHADER_PARAMS, 'TORUS_THICKNESS', 0.01, 0.5, 0.01).name('Grosor Torus');
-    fShader.add(SHADER_PARAMS, 'SMALL_SPHERE_SIZE', 0, 0.5, 0.01).name('Esfera Tamaño');
-    fShader.add(SHADER_PARAMS, 'BLEND_AMOUNT', 0, 1, 0.01).name('Blend');
-    fShader.add(SHADER_PARAMS, 'NOISE_SPEED', 0, 1, 0.01).name('Noise Speed');
-    fShader.add(SHADER_PARAMS, 'ORBIT_RADIUS', 0, 0.5, 0.01).name('Orbita Radio');
-    fShader.add(SHADER_PARAMS, 'ORBIT_SPEED', 0, 1, 0.01).name('Orbita Velocidad');
-    fShader.add(SHADER_PARAMS, 'ORBIT_FFT_PUSH', 0, 3, 0.1).name('Orbita FFT Push');
-    fShader.add(SHADER_PARAMS, 'COLOR_RANGE', 0, 1, 0.01).name('Color Rango');
-    fShader.add(SHADER_PARAMS, 'COLOR_BASE', 0, 1, 0.01).name('Color Base');
-    fShader.add(SHADER_PARAMS, 'COLOR_POW', 0.5, 8, 0.1).name('Color Contraste');
-    fShader.close();
-
-    // --- Botones: Guardar y Reset ---
-    const actions = {
-      guardar: () => {
-        localStorage.setItem(LS_KEY_USER, JSON.stringify(snapshotParams()));
-        console.log('Config guardada');
-      },
-      reset: () => {
-        const defaults = JSON.parse(localStorage.getItem(LS_KEY_DEFAULT));
-        if (defaults) {
-          applyParams(defaults);
-          localStorage.removeItem(LS_KEY_USER);
-          refreshGUI();
-          console.log('Config reseteada a defaults');
-        }
-      }
-    };
-    gui.add(actions, 'guardar').name('Guardar');
-    gui.add(actions, 'reset').name('Reset Defaults');
-
-    // Toggle GUI con tecla H
-    document.addEventListener('keydown', e => {
-      if (e.key === 'h' || e.key === 'H') gui.show(gui._hidden);
-    });
   </script>
 
   <script>
