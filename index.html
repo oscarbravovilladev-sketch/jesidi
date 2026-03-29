@@ -44,16 +44,9 @@
     }
 
     #sensor-info {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      z-index: 11;
       color: rgb(69, 69, 69);
-      padding: 10px;
-      border-radius: 5px;
       font-family: monospace;
       font-size: 10px;
-      
     }
 
     #sensor-info span {
@@ -128,6 +121,35 @@
       margin: 0 !important;
       width: 230px !important;
     }
+
+    #top-bar {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 10001;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #gui-toggle-btn {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: #fff;
+      font-size: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      flex-shrink: 0;
+    }
+    #gui-toggle-btn:hover {
+      background: rgba(255,255,255,0.3);
+    }
   </style>
   <script>
     // Opt #1: forzar DPI 1x en tablets/moviles para reducir carga GPU
@@ -141,13 +163,16 @@
 </head>
 
 <body>
+  <div id="top-bar">
+    <button id="gui-toggle-btn" title="Mostrar/Ocultar configuración">⚙</button>
+    <div id="sensor-info"></div>
+  </div>
   <div id="overlay">
     <img src="fondo.png" alt="">
     <h1>CLICK PARA INICIAR</h1>
   </div>
 
   <canvas class="my-canvas"></canvas>
-  <div id="sensor-info"></div>
   <div id="audio-ui">
     <span class="ui-name ui-name-left" id="ui-name-l"></span>
     <div class="ui-bar-wrap ui-bar-wrap-left"><div class="ui-bar-fill" id="ui-bar-l"></div></div>
@@ -716,6 +741,7 @@
 
     // --- Construir GUI ---
     const gui = new lil.GUI({ title: 'Parametros' });
+    gui.domElement.style.display = 'none';
 
     // Helpers para color hex <-> array
     function rgbToHex(arr) { return '#' + arr.map(v => v.toString(16).padStart(2,'0')).join(''); }
@@ -827,9 +853,10 @@
     gui.add(actions, 'guardar').name('Guardar');
     gui.add(actions, 'reset').name('Reset Defaults');
 
-    // Toggle GUI con tecla H
-    document.addEventListener('keydown', e => {
-      if (e.key === 'h' || e.key === 'H') gui.show(gui._hidden);
+    // Toggle GUI con botón esquina superior derecha
+    document.getElementById('gui-toggle-btn').addEventListener('click', () => {
+      const visible = gui.domElement.style.display !== 'none';
+      gui.domElement.style.display = visible ? 'none' : '';
     });
   </script>
 
