@@ -132,7 +132,7 @@
       gap: 10px;
     }
 
-    #gui-toggle-btn {
+    #gui-toggle-btn, .set-btn {
       background: rgba(255,255,255,0.15);
       border: 1px solid rgba(255,255,255,0.3);
       color: #fff;
@@ -147,7 +147,16 @@
       user-select: none;
       flex-shrink: 0;
     }
-    #gui-toggle-btn:hover {
+    .set-btn {
+      font-size: 13px;
+      font-family: monospace;
+      font-weight: bold;
+    }
+    .set-btn.active {
+      background: rgba(255,255,255,0.45);
+      border-color: rgba(255,255,255,0.7);
+    }
+    #gui-toggle-btn:hover, .set-btn:hover {
       background: rgba(255,255,255,0.3);
     }
   </style>
@@ -165,6 +174,9 @@
 <body>
   <div id="top-bar">
     <button id="gui-toggle-btn" title="Mostrar/Ocultar configuración">⚙</button>
+    <button class="set-btn active" data-set="1" title="Set 1">S1</button>
+    <button class="set-btn" data-set="2" title="Set 2">S2</button>
+    <button class="set-btn" data-set="3" title="Set 3">S3</button>
     <div id="sensor-info"></div>
   </div>
   <div id="overlay">
@@ -183,30 +195,55 @@
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script>
     // --- CONFIGURACION DE AUDIOS ---
-    const AUDIOS = [
-      'audios/OLAS.mp3',
-      'audios/MEGAS.mp3',
-      'audios/HORN.mp3',
-      'audios/GERBERE.mp3',
-      'audios/ERDOGEN.mp3',
-      'audios/BARCA.mp3'
-    ];
+    const AUDIO_SETS = {
+      1: [
+        'audios/set1_OLAS.mp3',
+        'audios/set1_MEGAS.mp3',
+        'audios/set1_HORN.mp3',
+        'audios/set1_GERBERE.mp3',
+        'audios/set1_ERDOGEN.mp3',
+        'audios/set1_BARCA.mp3'
+      ],
+      2: [
+        'audios/set2_Arp.mp3',
+        'audios/set2_Bright.mp3',
+        'audios/set2_HatsnSnare.mp3',
+        'audios/set2_Poly.mp3',
+        'audios/set2_Tube.mp3',
+        'audios/set2_moo.mp3'
+      ],
+      3: [
+        'audios/set3_Audio.mp3',
+        'audios/set3_Cars.mp3',
+        'audios/set3_Distorted.mp3',
+        'audios/set3_Open.mp3',
+        'audios/set3_Vintage.mp3',
+        'audios/set3_satured.mp3'
+      ]
+    };
+    let currentSet = 1;
+    let AUDIOS = AUDIO_SETS[currentSet];
+    
 
     let CROSSFADE = 300;
-    // Orden aleatorio de tracks en cada carga
+    // Orden aleatorio de tracks
     const trackOrder = [0, 1, 2, 3, 4, 5];
-    for (let i = trackOrder.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [trackOrder[i], trackOrder[j]] = [trackOrder[j], trackOrder[i]];
+    function shuffleTrackOrder() {
+      for (let i = trackOrder.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [trackOrder[i], trackOrder[j]] = [trackOrder[j], trackOrder[i]];
+      }
+      ZONES.forEach((z, i) => { z.track = trackOrder[i]; });
     }
     const ZONES = [
-      { min: 210, max: 710, track: trackOrder[0] },
-      { min: 710, max: 1210, track: trackOrder[1] },
-      { min: 1210, max: 1710, track: trackOrder[2] },
-      { min: 1710, max: 2210, track: trackOrder[3] },
-      { min: 2210, max: 2710, track: trackOrder[4] },
-      { min: 2710, max: 3200, track: trackOrder[5] }
+      { min: 210, max: 710, track: 0 },
+      { min: 710, max: 1210, track: 1 },
+      { min: 1210, max: 1710, track: 2 },
+      { min: 1710, max: 2210, track: 3 },
+      { min: 2210, max: 2710, track: 4 },
+      { min: 2710, max: 3200, track: 5 }
     ];
+    shuffleTrackOrder();
 
     // --- ESTADO ---
     let systemStarted = false;
@@ -235,6 +272,42 @@
       a.loop = true;
       a.volume = 0;
       audioElements.push(a);
+    });
+
+    // --- Cambiar set de audio ---
+    function switchAudioSet(setNum) {
+      if (setNum === currentSet) return;
+      currentSet = setNum;
+      AUDIOS = AUDIO_SETS[currentSet];
+      shuffleTrackOrder();
+      audioElements.forEach((a, i) => {
+        const wasPlaying = !a.paused;
+        const prevTime = a.currentTime;
+        a.src = AUDIOS[i];
+        a.load();
+        if (wasPlaying) {
+          a.currentTime = prevTime;
+          a.play().catch(e => console.log("Error play:", e));
+        }
+      });
+      // Actualizar botones
+      document.querySelectorAll('.set-btn').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.set) === setNum);
+      });
+      // Guardar set activo y cargar sus params
+      localStorage.setItem(LS_KEY_ACTIVE_SET, setNum);
+      if (typeof loadSetParams === 'function') {
+        loadSetParams(setNum);
+        if (typeof refreshGUI === 'function') {
+          updateGuardarLabel();
+          refreshGUI();
+        }
+      }
+    }
+
+    // Conectar botones de set
+    document.querySelectorAll('.set-btn').forEach(btn => {
+      btn.addEventListener('click', () => switchAudioSet(parseInt(btn.dataset.set)));
     });
 
     // --- Helpers para nombres de track ---
@@ -623,13 +696,14 @@
         const t = p.millis() / 1000;
         const cx = p.width / 2;
         const vMin = p.min(p.width, p.height);
-        const cy = p.height / 2 + vMin * R.CENTER_Y_OFFSET;
+        const cyBase = p.height / 2;
+        const cy = cyBase + vMin * R.CENTER_Y_OFFSET;
         const baseR = vMin * R.BASE_RADIUS;
         const ringSpacing = R.RING_SPACING * vMin / 400;
 
         // --- Dibujar Blobs Organicos (detras de todo) ---
         for (let b = 0; b < ORGANIC_BLOBS.length; b++) {
-          drawOrganicBlob(p, ORGANIC_BLOBS[b], bands, t, cx, cy);
+          drawOrganicBlob(p, ORGANIC_BLOBS[b], bands, t, cx, cyBase);
         }
 
         p.noFill();
@@ -702,9 +776,10 @@
     // GUI - lil-gui (parametros en tiempo real)
     // =============================================
 
-    // --- LocalStorage: guardar defaults y cargar usuario ---
+    // --- LocalStorage: guardar defaults y cargar por set ---
     const LS_KEY_DEFAULT = 'jesidi_params_default';
-    const LS_KEY_USER = 'jesidi_params_user';
+    const LS_KEY_ACTIVE_SET = 'jesidi_active_set';
+    function lsKeySet(n) { return 'jesidi_params_set' + n; }
 
     // Snapshot de un objeto (deep copy, soporta arrays)
     function snapshotParams() {
@@ -733,11 +808,25 @@
       localStorage.setItem(LS_KEY_DEFAULT, JSON.stringify(snapshotParams()));
     }
 
-    // Si hay config guardada por el usuario, aplicarla al inicio
-    const savedUser = localStorage.getItem(LS_KEY_USER);
-    if (savedUser) {
-      try { applyParams(JSON.parse(savedUser)); } catch(e) { console.warn('Error cargando config:', e); }
+    // Cargar params del set guardado o defaults
+    function loadSetParams(setNum) {
+      const saved = localStorage.getItem(lsKeySet(setNum));
+      if (saved) {
+        try { applyParams(JSON.parse(saved)); } catch(e) { console.warn('Error cargando config set' + setNum + ':', e); }
+      } else {
+        const defaults = localStorage.getItem(LS_KEY_DEFAULT);
+        if (defaults) {
+          try { applyParams(JSON.parse(defaults)); } catch(e) {}
+        }
+      }
     }
+
+    // Restaurar set activo guardado (antes de construir GUI)
+    const savedActiveSet = parseInt(localStorage.getItem(LS_KEY_ACTIVE_SET)) || 1;
+    if (savedActiveSet !== currentSet) {
+      switchAudioSet(savedActiveSet);
+    }
+    loadSetParams(currentSet);
 
     // --- Construir GUI ---
     const gui = new lil.GUI({ title: 'Parametros' });
@@ -837,16 +926,16 @@
     // --- Botones: Guardar y Reset ---
     const actions = {
       guardar: () => {
-        localStorage.setItem(LS_KEY_USER, JSON.stringify(snapshotParams()));
-        console.log('Config guardada');
+        localStorage.setItem(lsKeySet(currentSet), JSON.stringify(snapshotParams()));
+        console.log('Config guardada para Set ' + currentSet);
       },
       reset: () => {
-        const defaults = JSON.parse(localStorage.getItem(LS_KEY_DEFAULT));
+        const defaults = localStorage.getItem(LS_KEY_DEFAULT);
         if (defaults) {
-          applyParams(defaults);
-          localStorage.removeItem(LS_KEY_USER);
+          applyParams(JSON.parse(defaults));
+          localStorage.removeItem(lsKeySet(currentSet));
           refreshGUI();
-          console.log('Config reseteada a defaults');
+          console.log('Config reseteada a defaults para Set ' + currentSet);
         }
       }
     };
@@ -881,8 +970,12 @@
     fZones.add(audioParams, 'zone4max', 2000, 3500, 10).name('Zona 5→6');
     fZones.add(audioParams, 'zone5max', 2500, 4000, 10).name('Zona 6 max');
 
-    gui.add(actions, 'guardar').name('Guardar');
-    gui.add(actions, 'reset').name('Reset Defaults');
+    const guardarCtrl = gui.add(actions, 'guardar').name('Guardar Set ' + currentSet);
+    gui.add(actions, 'reset').name('Reset Set Actual');
+
+    function updateGuardarLabel() {
+      guardarCtrl.name('Guardar Set ' + currentSet);
+    }
 
     // Toggle GUI con botón esquina superior derecha
     document.getElementById('gui-toggle-btn').addEventListener('click', () => {
