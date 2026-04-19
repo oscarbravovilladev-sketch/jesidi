@@ -787,6 +787,11 @@
         blobs: ORGANIC_BLOBS.map(b => Object.assign({}, b, { COLOR: [...b.COLOR] })),
         rings: Object.assign({}, FFT_RINGS),
         shader: Object.assign({}, SHADER_PARAMS),
+        audio: {
+          crossfade: CROSSFADE,
+          volSmooth: VOL_SMOOTH,
+          zones: ZONES.map(z => ({ min: z.min, max: z.max })),
+        },
       };
     }
 
@@ -801,10 +806,19 @@
       });
       Object.assign(FFT_RINGS, snap.rings);
       Object.assign(SHADER_PARAMS, snap.shader);
+      if (snap.audio) {
+        CROSSFADE = snap.audio.crossfade;
+        VOL_SMOOTH = snap.audio.volSmooth;
+        snap.audio.zones.forEach((z, i) => {
+          ZONES[i].min = z.min;
+          ZONES[i].max = z.max;
+        });
+      }
     }
 
-    // Guardar defaults en localStorage (solo la primera vez)
-    if (!localStorage.getItem(LS_KEY_DEFAULT)) {
+    // Guardar defaults en localStorage (regraba si faltan campos nuevos como audio)
+    const _existingDefaults = localStorage.getItem(LS_KEY_DEFAULT);
+    if (!_existingDefaults || !JSON.parse(_existingDefaults).audio) {
       localStorage.setItem(LS_KEY_DEFAULT, JSON.stringify(snapshotParams()));
     }
 
@@ -821,10 +835,17 @@
       }
     }
 
-    // Restaurar set activo guardado (antes de construir GUI)
+    // Cargar params del set activo al inicio (sin GUI aun)
     const savedActiveSet = parseInt(localStorage.getItem(LS_KEY_ACTIVE_SET)) || 1;
     if (savedActiveSet !== currentSet) {
-      switchAudioSet(savedActiveSet);
+      // Cambiar set sin pasar por switchAudioSet (GUI no existe aun)
+      currentSet = savedActiveSet;
+      AUDIOS = AUDIO_SETS[currentSet];
+      audioElements.forEach((a, i) => { a.src = AUDIOS[i]; a.load(); });
+      document.querySelectorAll('.set-btn').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.set) === currentSet);
+      });
+      shuffleTrackOrder();
     }
     loadSetParams(currentSet);
 
