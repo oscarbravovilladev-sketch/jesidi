@@ -105,8 +105,14 @@
     }
 
     .my-canvas.proj-mode {
-      -webkit-mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, black 30%, transparent 70%);
-      mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, black 30%, transparent 70%);
+      --mask-w: 60%;
+      --mask-h: 60%;
+      --mask-x: 50%;
+      --mask-y: 50%;
+      --mask-inner: 30%;
+      --mask-outer: 70%;
+      -webkit-mask-image: radial-gradient(ellipse var(--mask-w) var(--mask-h) at var(--mask-x) var(--mask-y), black var(--mask-inner), transparent var(--mask-outer));
+      mask-image: radial-gradient(ellipse var(--mask-w) var(--mask-h) at var(--mask-x) var(--mask-y), black var(--mask-inner), transparent var(--mask-outer));
     }
 
     #sensor-info, #fft-info, #audio-ui {
@@ -775,6 +781,15 @@
       COLOR_BASE: 0.5,           // base del color (mayor = mas blanco, 0-1)
       COLOR_POW: 2,               // exponente de contraste (menor = mas blanco, 1-8)
     };
+
+    const MASK_PARAMS = {
+      WIDTH: 60,       // ancho de la elipse (%)
+      HEIGHT: 60,      // alto de la elipse (%)
+      POS_X: 50,       // posicion X del centro (%)
+      POS_Y: 50,       // posicion Y del centro (%)
+      INNER: 30,       // borde interior opaco (%)
+      OUTER: 70,       // borde exterior transparente (%)
+    };
     // =============================================
   </script>
 
@@ -799,6 +814,7 @@
           volSmooth: VOL_SMOOTH,
           zones: ZONES.map(z => ({ min: z.min, max: z.max })),
         },
+        mask: Object.assign({}, MASK_PARAMS),
       };
     }
 
@@ -820,6 +836,9 @@
           ZONES[i].min = z.min;
           ZONES[i].max = z.max;
         });
+      }
+      if (snap.mask) {
+        Object.assign(MASK_PARAMS, snap.mask);
       }
     }
 
@@ -998,6 +1017,27 @@
     fZones.add(audioParams, 'zone4max', 2000, 3500, 10).name('Zona 5→6');
     fZones.add(audioParams, 'zone5max', 2500, 4000, 10).name('Zona 6 max');
 
+    // --- Mascara Proyeccion ---
+    const shaderCanvas = document.querySelector('.my-canvas');
+    function updateMask() {
+      const s = shaderCanvas.style;
+      s.setProperty('--mask-w', MASK_PARAMS.WIDTH + '%');
+      s.setProperty('--mask-h', MASK_PARAMS.HEIGHT + '%');
+      s.setProperty('--mask-x', MASK_PARAMS.POS_X + '%');
+      s.setProperty('--mask-y', MASK_PARAMS.POS_Y + '%');
+      s.setProperty('--mask-inner', MASK_PARAMS.INNER + '%');
+      s.setProperty('--mask-outer', MASK_PARAMS.OUTER + '%');
+    }
+
+    const fMask = gui.addFolder('Mascara Proyeccion');
+    fMask.add(MASK_PARAMS, 'WIDTH', 10, 150, 1).name('Ancho %').onChange(updateMask);
+    fMask.add(MASK_PARAMS, 'HEIGHT', 10, 150, 1).name('Alto %').onChange(updateMask);
+    fMask.add(MASK_PARAMS, 'POS_X', 0, 100, 1).name('Centro X %').onChange(updateMask);
+    fMask.add(MASK_PARAMS, 'POS_Y', 0, 100, 1).name('Centro Y %').onChange(updateMask);
+    fMask.add(MASK_PARAMS, 'INNER', 0, 100, 1).name('Borde Opaco %').onChange(updateMask);
+    fMask.add(MASK_PARAMS, 'OUTER', 0, 100, 1).name('Borde Fade %').onChange(updateMask);
+    fMask.close();
+
     const guardarCtrl = gui.add(actions, 'guardar').name('Guardar Set ' + currentSet);
     gui.add(actions, 'reset').name('Reset Set Actual');
 
@@ -1007,9 +1047,9 @@
 
     // Toggle modo proyeccion (mascara radial en shader)
     document.getElementById('proj-btn').addEventListener('click', function() {
-      const shaderCanvas = document.querySelector('.my-canvas');
       const isProj = shaderCanvas.classList.toggle('proj-mode');
       this.classList.toggle('active', isProj);
+      updateMask();
     });
 
     // Toggle GUI con botón esquina superior derecha
