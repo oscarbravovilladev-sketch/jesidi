@@ -104,6 +104,11 @@
       z-index: 0;
     }
 
+    .my-canvas.proj-mode {
+      -webkit-mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, black 30%, transparent 70%);
+      mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, black 30%, transparent 70%);
+    }
+
     #sensor-info, #fft-info, #audio-ui {
       z-index: 11;
     }
@@ -177,6 +182,7 @@
     <button class="set-btn active" data-set="1" title="Set 1">S1</button>
     <button class="set-btn" data-set="2" title="Set 2">S2</button>
     <button class="set-btn" data-set="3" title="Set 3">S3</button>
+    <button class="set-btn" id="proj-btn" title="Modo Proyeccion (fondo negro)">PRJ</button>
     <div id="sensor-info"></div>
   </div>
   <div id="overlay">
@@ -475,6 +481,7 @@
     document.getElementById('overlay').addEventListener('click', function () {
       if (!systemStarted) {
         this.style.display = 'none';
+        document.documentElement.requestFullscreen().catch(() => {});
         initAudioFFT();
         audioElements.forEach(a => {
           a.play().catch(e => console.log("Error play:", e));
@@ -997,6 +1004,13 @@
     function updateGuardarLabel() {
       guardarCtrl.name('Guardar Set ' + currentSet);
     }
+
+    // Toggle modo proyeccion (mascara radial en shader)
+    document.getElementById('proj-btn').addEventListener('click', function() {
+      const shaderCanvas = document.querySelector('.my-canvas');
+      const isProj = shaderCanvas.classList.toggle('proj-mode');
+      this.classList.toggle('active', isProj);
+    });
 
     // Toggle GUI con botón esquina superior derecha
     document.getElementById('gui-toggle-btn').addEventListener('click', () => {
