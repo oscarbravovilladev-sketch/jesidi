@@ -689,7 +689,6 @@
       p.draw = () => {
         p.clear();
         if (window.updateFFT) window.updateFFT();
-        if (window.updateDBLinks) window.updateDBLinks();
         const bands = window.fftBands;
         if (!bands || !bands.raw) return;
 
@@ -792,51 +791,6 @@
       INNER: 30,       // borde interior opaco (%)
       OUTER: 70,       // borde exterior transparente (%)
     };
-
-    // =============================================
-    // CONTROL dB - Mapeo de microfono a parametros
-    // =============================================
-    const DB_CONTROL = {
-      floor: 20,
-      ceiling: 50,
-      attack: 0.3,
-      release: 0.1,
-      curve: 'linear',
-      currentDB: 0,
-    };
-
-    const DB_CURVES = {
-      linear: t => t,
-      quad: t => t * t,
-      sqrt: t => Math.sqrt(t),
-      expo: t => t < 0.01 ? 0 : Math.pow(t, 3),
-    };
-
-    const dbLinks = [];
-
-    function updateDBLinks() {
-      const sd = window.sensorData;
-      if (!sd || sd.dB == null) return;
-      const raw = sd.dB;
-      if (raw > DB_CONTROL.currentDB) {
-        DB_CONTROL.currentDB += (raw - DB_CONTROL.currentDB) * DB_CONTROL.attack;
-      } else {
-        DB_CONTROL.currentDB += (raw - DB_CONTROL.currentDB) * DB_CONTROL.release;
-      }
-      DB_CONTROL.currentDB = Math.round(DB_CONTROL.currentDB * 1000) / 1000;
-      let t = (DB_CONTROL.currentDB - DB_CONTROL.floor) / (DB_CONTROL.ceiling - DB_CONTROL.floor);
-      t = Math.max(0, Math.min(1, t));
-      const curve = DB_CURVES[DB_CONTROL.curve] || DB_CURVES.linear;
-      t = curve(t);
-      for (const link of dbLinks) {
-        if (link.mode === 'off') continue;
-        const inv = link.mode === 'dB inv';
-        const val = inv ? (1 - t) : t;
-        link.target[link.key] = link.min + val * (link.max - link.min);
-        if (link.ctrl) link.ctrl.updateDisplay();
-      }
-    }
-    window.updateDBLinks = updateDBLinks;
     // =============================================
   </script>
 
@@ -862,8 +816,6 @@
           zones: ZONES.map(z => ({ min: z.min, max: z.max })),
         },
         mask: Object.assign({}, MASK_PARAMS),
-        dbControl: { floor: DB_CONTROL.floor, ceiling: DB_CONTROL.ceiling, attack: DB_CONTROL.attack, release: DB_CONTROL.release, curve: DB_CONTROL.curve },
-        dbModes: dbLinks.map(l => l.mode),
       };
     }
 
@@ -889,23 +841,11 @@
       if (snap.mask) {
         Object.assign(MASK_PARAMS, snap.mask);
       }
-      if (snap.dbControl) {
-        DB_CONTROL.floor = snap.dbControl.floor;
-        DB_CONTROL.ceiling = snap.dbControl.ceiling;
-        DB_CONTROL.attack = snap.dbControl.attack;
-        DB_CONTROL.release = snap.dbControl.release;
-        DB_CONTROL.curve = snap.dbControl.curve;
-      }
-      if (snap.dbModes && dbLinks.length) {
-        snap.dbModes.forEach((mode, i) => {
-          if (dbLinks[i]) dbLinks[i].mode = mode;
-        });
-      }
     }
 
     // Guardar defaults en localStorage (regraba si faltan campos nuevos como audio)
     const _existingDefaults = localStorage.getItem(LS_KEY_DEFAULT);
-    if (!_existingDefaults || !JSON.parse(_existingDefaults).audio || !JSON.parse(_existingDefaults).dbControl) {
+    if (!_existingDefaults || !JSON.parse(_existingDefaults).audio) {
       localStorage.setItem(LS_KEY_DEFAULT, JSON.stringify(snapshotParams()));
     }
 
@@ -940,15 +880,6 @@
     const gui = new lil.GUI({ title: 'Parametros' });
     gui.domElement.style.display = 'none';
 
-    // Helper: slider con toggle dB
-    function dbSlider(folder, target, key, min, max, step, name) {
-      const ctrl = folder.add(target, key, min, max, step).name(name);
-      const link = { mode: 'off', target, key, min, max, ctrl };
-      dbLinks.push(link);
-      folder.add(link, 'mode', ['off', 'dB', 'dB inv']).name('\u21AA dB');
-      return ctrl;
-    }
-
     // Helpers para color hex <-> array
     function rgbToHex(arr) { return '#' + arr.map(v => v.toString(16).padStart(2,'0')).join(''); }
     function hexToRgb(hex, arr) {
@@ -971,17 +902,17 @@
     const fTop = gui.addFolder('Blob Superior');
     fTop.add(blobTop, 'POS_X', -1, 1, 0.01).name('Pos X');
     fTop.add(blobTop, 'POS_Y', -1, 1, 0.01).name('Pos Y');
-    dbSlider(fTop, blobTop, 'RADIUS_X', 0.01, 0.5, 0.01, 'Radio X');
-    dbSlider(fTop, blobTop, 'RADIUS_Y', 0.01, 0.5, 0.01, 'Radio Y');
-    dbSlider(fTop, blobTop, 'ALPHA', 0, 255, 1, 'Opacidad');
+    fTop.add(blobTop, 'RADIUS_X', 0.01, 0.5, 0.01).name('Radio X');
+    fTop.add(blobTop, 'RADIUS_Y', 0.01, 0.5, 0.01).name('Radio Y');
+    fTop.add(blobTop, 'ALPHA', 0, 255, 1).name('Opacidad');
     fTop.add(blobTop, 'LAYERS', 1, 10, 1).name('Capas');
     fTop.add(blobTop, 'NOISE_SCALE', 0.1, 3, 0.1).name('Noise Escala');
-    dbSlider(fTop, blobTop, 'NOISE_SPEED', 0, 1, 0.01, 'Noise Velocidad');
-    dbSlider(fTop, blobTop, 'DEFORM', 0, 1, 0.01, 'Deformacion');
-    dbSlider(fTop, blobTop, 'FFT_BREATHE', 0, 0.5, 0.01, 'FFT Respiracion');
+    fTop.add(blobTop, 'NOISE_SPEED', 0, 1, 0.01).name('Noise Velocidad');
+    fTop.add(blobTop, 'DEFORM', 0, 1, 0.01).name('Deformacion');
+    fTop.add(blobTop, 'FFT_BREATHE', 0, 0.5, 0.01).name('FFT Respiracion');
     fTop.add(blobTop, 'FFT_ALPHA', 0, 100, 1).name('FFT Opacidad');
     fTop.add(blobTop, 'ROTATION', -Math.PI, Math.PI, 0.01).name('Rotacion');
-    dbSlider(fTop, blobTop, 'GRAIN', 0, 1, 0.05, 'Grano');
+    fTop.add(blobTop, 'GRAIN', 0, 1, 0.05).name('Grano');
     fTop.addColor(colorTop, 'hex').name('Color').onChange(v => hexToRgb(v, blobTop.COLOR));
     fTop.close();
 
@@ -990,17 +921,17 @@
     const fBot = gui.addFolder('Blob Inferior');
     fBot.add(blobBot, 'POS_X', -1, 1, 0.01).name('Pos X');
     fBot.add(blobBot, 'POS_Y', -1, 1, 0.01).name('Pos Y');
-    dbSlider(fBot, blobBot, 'RADIUS_X', 0.01, 0.5, 0.01, 'Radio X');
-    dbSlider(fBot, blobBot, 'RADIUS_Y', 0.01, 0.5, 0.01, 'Radio Y');
-    dbSlider(fBot, blobBot, 'ALPHA', 0, 255, 1, 'Opacidad');
+    fBot.add(blobBot, 'RADIUS_X', 0.01, 0.5, 0.01).name('Radio X');
+    fBot.add(blobBot, 'RADIUS_Y', 0.01, 0.5, 0.01).name('Radio Y');
+    fBot.add(blobBot, 'ALPHA', 0, 255, 1).name('Opacidad');
     fBot.add(blobBot, 'LAYERS', 1, 10, 1).name('Capas');
     fBot.add(blobBot, 'NOISE_SCALE', 0.1, 3, 0.1).name('Noise Escala');
-    dbSlider(fBot, blobBot, 'NOISE_SPEED', 0, 1, 0.01, 'Noise Velocidad');
-    dbSlider(fBot, blobBot, 'DEFORM', 0, 1, 0.01, 'Deformacion');
-    dbSlider(fBot, blobBot, 'FFT_BREATHE', 0, 0.5, 0.01, 'FFT Respiracion');
+    fBot.add(blobBot, 'NOISE_SPEED', 0, 1, 0.01).name('Noise Velocidad');
+    fBot.add(blobBot, 'DEFORM', 0, 1, 0.01).name('Deformacion');
+    fBot.add(blobBot, 'FFT_BREATHE', 0, 0.5, 0.01).name('FFT Respiracion');
     fBot.add(blobBot, 'FFT_ALPHA', 0, 100, 1).name('FFT Opacidad');
     fBot.add(blobBot, 'ROTATION', -Math.PI, Math.PI, 0.01).name('Rotacion');
-    dbSlider(fBot, blobBot, 'GRAIN', 0, 1, 0.05, 'Grano');
+    fBot.add(blobBot, 'GRAIN', 0, 1, 0.05).name('Grano');
     fBot.addColor(colorBot, 'hex').name('Color').onChange(v => hexToRgb(v, blobBot.COLOR));
     fBot.close();
 
@@ -1008,15 +939,15 @@
     const fRings = gui.addFolder('Anillos FFT');
     fRings.add(FFT_RINGS, 'NUM_RINGS', 1, 30, 1).name('Num Anillos');
     fRings.add(FFT_RINGS, 'CENTER_Y_OFFSET', -0.5, 0.5, 0.01).name('Centro Y');
-    dbSlider(fRings, FFT_RINGS, 'BASE_RADIUS', 0.01, 0.5, 0.01, 'Radio Base');
-    dbSlider(fRings, FFT_RINGS, 'RING_SPACING', 1, 20, 0.5, 'Espaciado');
-    dbSlider(fRings, FFT_RINGS, 'ROTATION_SPEED', 0, 1, 0.01, 'Vel Rotacion');
-    dbSlider(fRings, FFT_RINGS, 'ALPHA_BASE', 0, 255, 1, 'Opacidad Base');
+    fRings.add(FFT_RINGS, 'BASE_RADIUS', 0.01, 0.5, 0.01).name('Radio Base');
+    fRings.add(FFT_RINGS, 'RING_SPACING', 1, 20, 0.5).name('Espaciado');
+    fRings.add(FFT_RINGS, 'ROTATION_SPEED', 0, 1, 0.01).name('Vel Rotacion');
+    fRings.add(FFT_RINGS, 'ALPHA_BASE', 0, 255, 1).name('Opacidad Base');
     fRings.add(FFT_RINGS, 'ALPHA_FFT_MULT', 0, 200, 1).name('Opacidad FFT');
     fRings.add(FFT_RINGS, 'ALPHA_DECAY', 0, 20, 0.5).name('Decay Opacidad');
     fRings.add(FFT_RINGS, 'STROKE_BASE', 0.5, 5, 0.1).name('Grosor Base');
     fRings.add(FFT_RINGS, 'STROKE_DECAY', 0, 0.2, 0.01).name('Decay Grosor');
-    dbSlider(fRings, FFT_RINGS, 'AMP_BASE', 0, 150, 1, 'Amplitud Base');
+    fRings.add(FFT_RINGS, 'AMP_BASE', 0, 150, 1).name('Amplitud Base');
     fRings.add(FFT_RINGS, 'AMP_FFT_MULT', 0, 30, 0.5).name('Amplitud FFT');
     fRings.add(FFT_RINGS, 'SMOOTH_PASSES', 0, 10, 1).name('Suavizado Espacial');
     fRings.add(FFT_RINGS, 'SMOOTH_TEMPORAL', 0.05, 1, 0.05).name('Suavizado Temporal');
@@ -1027,16 +958,16 @@
     const fShader = gui.addFolder('Shader Torus');
     fShader.add(SHADER_PARAMS, 'CENTER_X_OFFSET', -1, 1, 0.01).name('Centro X');
     fShader.add(SHADER_PARAMS, 'CENTER_Y_OFFSET', -1, 1, 0.01).name('Centro Y');
-    dbSlider(fShader, SHADER_PARAMS, 'TORUS_SCALE', 0.1, 1.5, 0.01, 'Escala Torus');
-    dbSlider(fShader, SHADER_PARAMS, 'TORUS_THICKNESS', 0.01, 0.5, 0.01, 'Grosor Torus');
-    dbSlider(fShader, SHADER_PARAMS, 'SMALL_SPHERE_SIZE', 0, 0.5, 0.01, 'Esfera Tamano');
-    dbSlider(fShader, SHADER_PARAMS, 'BLEND_AMOUNT', 0, 1, 0.01, 'Blend');
-    dbSlider(fShader, SHADER_PARAMS, 'NOISE_SPEED', 0, 1, 0.01, 'Noise Speed');
-    dbSlider(fShader, SHADER_PARAMS, 'ORBIT_RADIUS', 0, 0.5, 0.01, 'Orbita Radio');
-    dbSlider(fShader, SHADER_PARAMS, 'ORBIT_SPEED', 0, 1, 0.01, 'Orbita Velocidad');
-    dbSlider(fShader, SHADER_PARAMS, 'ORBIT_FFT_PUSH', 0, 3, 0.1, 'Orbita FFT Push');
-    dbSlider(fShader, SHADER_PARAMS, 'COLOR_RANGE', 0, 1, 0.01, 'Color Rango');
-    dbSlider(fShader, SHADER_PARAMS, 'COLOR_BASE', 0, 1, 0.01, 'Color Base');
+    fShader.add(SHADER_PARAMS, 'TORUS_SCALE', 0.1, 1.5, 0.01).name('Escala Torus');
+    fShader.add(SHADER_PARAMS, 'TORUS_THICKNESS', 0.01, 0.5, 0.01).name('Grosor Torus');
+    fShader.add(SHADER_PARAMS, 'SMALL_SPHERE_SIZE', 0, 0.5, 0.01).name('Esfera Tamaño');
+    fShader.add(SHADER_PARAMS, 'BLEND_AMOUNT', 0, 1, 0.01).name('Blend');
+    fShader.add(SHADER_PARAMS, 'NOISE_SPEED', 0, 1, 0.01).name('Noise Speed');
+    fShader.add(SHADER_PARAMS, 'ORBIT_RADIUS', 0, 0.5, 0.01).name('Orbita Radio');
+    fShader.add(SHADER_PARAMS, 'ORBIT_SPEED', 0, 1, 0.01).name('Orbita Velocidad');
+    fShader.add(SHADER_PARAMS, 'ORBIT_FFT_PUSH', 0, 3, 0.1).name('Orbita FFT Push');
+    fShader.add(SHADER_PARAMS, 'COLOR_RANGE', 0, 1, 0.01).name('Color Rango');
+    fShader.add(SHADER_PARAMS, 'COLOR_BASE', 0, 1, 0.01).name('Color Base');
     fShader.add(SHADER_PARAMS, 'COLOR_POW', 0.5, 8, 0.1).name('Color Contraste');
     fShader.close();
 
@@ -1107,15 +1038,6 @@
     fMask.add(MASK_PARAMS, 'INNER', 0, 100, 1).name('Borde Opaco %').onChange(updateMask);
     fMask.add(MASK_PARAMS, 'OUTER', 0, 100, 1).name('Borde Fade %').onChange(updateMask);
     fMask.close();
-
-    // --- Control dB ---
-    const fDB = gui.addFolder('Control dB');
-    fDB.add(DB_CONTROL, 'floor', 0, 40, 1).name('dB Suelo');
-    fDB.add(DB_CONTROL, 'ceiling', 30, 80, 1).name('dB Techo');
-    fDB.add(DB_CONTROL, 'attack', 0.01, 0.5, 0.01).name('Attack');
-    fDB.add(DB_CONTROL, 'release', 0.01, 0.5, 0.01).name('Release');
-    fDB.add(DB_CONTROL, 'curve', Object.keys(DB_CURVES)).name('Curva');
-    fDB.add(DB_CONTROL, 'currentDB').name('dB actual').listen().disable();
 
     const guardarCtrl = gui.add(actions, 'guardar').name('Guardar Set ' + currentSet);
     gui.add(actions, 'reset').name('Reset Set Actual');

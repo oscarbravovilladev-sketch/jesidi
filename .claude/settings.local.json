@@ -10,7 +10,10 @@
       "Bash(find ~/.arduino15 -name \"*LD2450*\" 2>/dev/null | head -20)",
       "Bash(grep -r \"LD2450\\\\|ld2450\" /Users/oscarbravovilla/Desktop/Freenove_Ultimate_Starter_Kit_for_ESP32_S3-main --include=\"*.ino\" --include=\"*.cpp\" --include=\"*.h\" 2>/dev/null | head -20)",
       "Bash(grep -r \"LD2450\\\\|ld2450\" /Users/oscarbravovilla/Desktop/jesidi --include=\"*.ino\" --include=\"*.cpp\" --include=\"*.h\" 2>/dev/null | head -20)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(grep -l \"lil-gui\\\\|dat\\\\.gui\\\\|new GUI\" /Users/oscarbravovilla/Desktop/jesidi/labs_index/*.html)",
+      "Bash(git diff:*)",
+      "Bash(git add:*)"
     ]
   }
 }
