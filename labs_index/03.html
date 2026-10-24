@@ -11,6 +11,7 @@
       padding: 0;
       overflow: hidden;
       font-family: sans-serif;
+      background: url('../img/carbon.jpeg') center/cover no-repeat fixed;
     }
 
     /* Botón de inicio obligatorio para navegadores */
@@ -97,6 +98,7 @@
 
 <body>
   
+  <a href="../index.html" title="Volver al index" style="position:fixed;top:10px;left:10px;z-index:10000;background:rgba(0,0,0,0.6);border:1px solid rgba(0,255,65,0.5);color:#0f0;font-size:22px;width:36px;height:36px;border-radius:6px;display:flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer;">&#x25CE;</a>
   <div id="overlay">
     <h1>CLICK PARA INICIAR SISTEMA</h1>
   </div>
@@ -183,7 +185,7 @@
     }
 
     function draw() {
-      background(0); // Negro puro como en tu captura
+      clear(); // Fondo transparente para mostrar carbon.jpeg
 
       let centerX = width / 2;
       // 1. Subimos un poco el sensor para que no esté pegado al borde
