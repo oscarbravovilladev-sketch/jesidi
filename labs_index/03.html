@@ -54,8 +54,12 @@
       height: 100%;
       object-fit: cover;
       opacity: 0;
-      transition: opacity 1.5s ease-in-out;
+      transition: opacity 1.5s ease-in-out, object-fit 0s;
       z-index: 1;
+    }
+
+    .video-layer.fit-contain {
+      object-fit: contain;
     }
 
     .active-video {
@@ -99,6 +103,7 @@
 <body>
   
   <a href="../index.html" title="Volver al index" style="position:fixed;top:10px;left:10px;z-index:10000;background:rgba(0,0,0,0.6);border:1px solid rgba(0,255,65,0.5);color:#0f0;font-size:22px;width:36px;height:36px;border-radius:6px;display:flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer;">&#x25CE;</a>
+  <button id="aspect-btn" title="Alternar aspecto video (cover/contain)" style="position:fixed;top:10px;left:56px;z-index:10000;background:rgba(0,0,0,0.6);border:1px solid rgba(0,255,65,0.5);color:#0f0;font-size:13px;font-family:monospace;font-weight:bold;width:42px;height:36px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;">16:9</button>
   <div id="overlay">
     <h1>CLICK PARA INICIAR SISTEMA</h1>
   </div>
@@ -326,6 +331,19 @@
         currentVideoIdx = newIdx;
       }
     }
+
+    // --- Toggle aspecto video 16:9 ---
+    const aspectBtn = document.getElementById('aspect-btn');
+    let fitContain = false;
+    aspectBtn.addEventListener('click', () => {
+      fitContain = !fitContain;
+      videoElements.forEach(v => {
+        if (v) v.classList.toggle('fit-contain', fitContain);
+      });
+      aspectBtn.style.background = fitContain
+        ? 'rgba(0,255,65,0.3)'
+        : 'rgba(0,0,0,0.6)';
+    });
 
   </script>
 </body>
