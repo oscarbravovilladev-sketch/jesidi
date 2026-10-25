@@ -105,6 +105,7 @@
   <a href="../index.html" title="Volver al index" style="position:fixed;top:10px;left:10px;z-index:10000;background:rgba(0,0,0,0.6);border:1px solid rgba(0,255,65,0.5);color:#0f0;font-size:22px;width:36px;height:36px;border-radius:6px;display:flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer;">&#x25CE;</a>
   <button id="aspect-btn" title="Alternar aspecto video (cover/contain)" style="position:fixed;top:10px;left:56px;z-index:10000;background:rgba(0,0,0,0.6);border:1px solid rgba(0,255,65,0.5);color:#0f0;font-size:13px;font-family:monospace;font-weight:bold;width:42px;height:36px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;">16:9</button>
   <button id="radar-btn" title="Forzar radar visible" style="position:fixed;top:10px;left:108px;z-index:10000;background:rgba(0,0,0,0.6);border:1px solid rgba(0,255,65,0.5);color:#0f0;font-size:13px;font-family:monospace;font-weight:bold;width:52px;height:36px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;">RADAR</button>
+  <button id="finish-btn" title="Permitir final de contenido" style="position:fixed;top:10px;left:170px;z-index:10000;background:rgba(0,0,0,0.6);border:1px solid rgba(0,255,65,0.5);color:#0f0;font-size:10px;font-family:monospace;font-weight:bold;height:36px;padding:0 8px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;white-space:nowrap;">FINALIZAR</button>
   <div id="overlay">
     <h1>INICIAR IMC.TESTING</h1>
   </div>
@@ -114,6 +115,9 @@
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script>
     let systemStarted = false;
+    let waitForFinish = false;
+    let pendingIdx = -1;
+    let lastDistance = 99999;
 
     const display = document.querySelector('p');
 
@@ -140,7 +144,7 @@
       if (conf.src) { // Solo si hay un archivo de video definido
         const v = document.createElement('video');
         v.src = conf.src;
-        v.loop = true; v.muted = true; v.playsInline = true;
+        v.loop = true; v.muted = true; v.playsInline = true; v.preload = 'auto';
         v.className = 'video-layer';
         v.id = 'video-' + index;
         container.appendChild(v);
@@ -299,39 +303,92 @@
       systemStarted = true;
     });
 
+    function switchToVideo(newIdx) {
+      console.log("Cambiando a rango:", newIdx);
+
+      videoElements.forEach((v, idx) => {
+        if (v) {
+          if (idx === newIdx) {
+            v.currentTime = 0;
+            v.loop = !waitForFinish;
+            v.classList.add('active-video');
+            v.play();
+          } else {
+            v.classList.remove('active-video');
+          }
+        }
+      });
+
+      const canvasElement = document.querySelector('canvas');
+      if (canvasElement && !forceRadar) {
+        if (VIDEO_CONFIG[newIdx].showRadar) {
+          canvasElement.classList.add('radar-visible');
+        } else {
+          canvasElement.classList.remove('radar-visible');
+        }
+      }
+
+      currentVideoIdx = newIdx;
+      pendingIdx = -1;
+    }
+
     function updateSystemLogic(d) {
       if (!systemStarted) return;
 
+      lastDistance = d;
       let newIdx = VIDEO_CONFIG.findIndex(c => d >= c.min && d <= c.max);
 
       if (newIdx !== -1 && newIdx !== currentVideoIdx) {
-        console.log("Cambiando a rango:", newIdx);
-
-        // 1. Manejar Videos
-        videoElements.forEach((v, idx) => {
-          if (v) {
-            if (idx === newIdx) {
-              v.classList.add('active-video');
-              v.play();
-            } else {
-              v.classList.remove('active-video');
-            }
-          }
-        });
-
-        // 2. Manejar Radar (Canvas)
-        const canvasElement = document.querySelector('canvas');
-        if (canvasElement && !forceRadar) {
-          if (VIDEO_CONFIG[newIdx].showRadar) {
-            canvasElement.classList.add('radar-visible');
-          } else {
-            canvasElement.classList.remove('radar-visible');
-          }
+        if (waitForFinish && currentVideoIdx !== -1 && videoElements[currentVideoIdx]) {
+          pendingIdx = newIdx;
+        } else {
+          switchToVideo(newIdx);
         }
-
-        currentVideoIdx = newIdx;
       }
     }
+
+    // --- Listeners para permitir final de contenido ---
+    const FADE_ANTICIPATION = 1.5; // segundos antes del final para iniciar crossfade
+    videoElements.forEach((v, idx) => {
+      if (!v) return;
+      let transitionStarted = false;
+
+      v.addEventListener('timeupdate', () => {
+        if (!waitForFinish || !v.duration) return;
+        let timeLeft = v.duration - v.currentTime;
+        if (timeLeft <= FADE_ANTICIPATION && !transitionStarted) {
+          let targetIdx = pendingIdx !== -1 ? pendingIdx : VIDEO_CONFIG.findIndex(c => lastDistance >= c.min && lastDistance <= c.max);
+          if (targetIdx !== -1 && targetIdx !== idx) {
+            transitionStarted = true;
+            switchToVideo(targetIdx);
+          }
+        }
+        if (v.currentTime < v.duration - FADE_ANTICIPATION - 0.5) {
+          transitionStarted = false;
+        }
+      });
+
+      v.addEventListener('ended', () => {
+        if (!waitForFinish) return;
+        transitionStarted = false;
+        if (idx === currentVideoIdx) {
+          v.currentTime = 0;
+          v.play();
+        }
+      });
+    });
+
+    // --- Toggle permitir final de contenido ---
+    const finishBtn = document.getElementById('finish-btn');
+    finishBtn.addEventListener('click', () => {
+      waitForFinish = !waitForFinish;
+      videoElements.forEach(v => {
+        if (v) v.loop = !waitForFinish;
+      });
+      finishBtn.style.background = waitForFinish
+        ? 'rgba(0,255,65,0.3)'
+        : 'rgba(0,0,0,0.6)';
+    });
 
     // --- Toggle forzar radar ---
     let forceRadar = false;
