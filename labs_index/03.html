@@ -120,10 +120,10 @@
     const DISTANCIA_RADAR = 1500; // El radar aparece si alguien está a menos de 1.5m
 
     const VIDEO_CONFIG = [
-      { min: 0, max: 1000, src: null, showRadar: true },
-      { min: 1001, max: 2000, src: '../videos/video__1.mp4', showRadar: false },
-      { min: 2001, max: 4000, src: '../videos/video__2.mp4', showRadar: false },
-      { min: 4001, max: 10000, src: '../videos/video__3.mp4', showRadar: false }
+      { min: 0, max: 500, src: null, showRadar: true },
+      { min: 501, max: 3000, src: '../videos/video__1.mp4', showRadar: false },
+      { min: 3001, max: 4500, src: '../videos/video__2.mp4', showRadar: false },
+      { min: 4501, max: 6000, src: '../videos/video__3.mp4', showRadar: false }
     ];
 
     const targets = {};
@@ -178,7 +178,7 @@
             <span>Angulo: ${t.ang}m/s</span>
 
             <span>Grados: ${t.temp}°C</span>
-            <span>Humedad: ${t.hum} HR</span
+            <span>Humedad: ${t.hum} HR</span>
           </div>
         `).join('');
       } catch (e) { console.error("Error MQTT:", e); }

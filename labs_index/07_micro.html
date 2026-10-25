@@ -843,11 +843,23 @@
       }
     }
 
-    // Guardar defaults en localStorage (regraba si faltan campos nuevos como audio)
-    const _existingDefaults = localStorage.getItem(LS_KEY_DEFAULT);
-    if (!_existingDefaults || !JSON.parse(_existingDefaults).audio) {
-      localStorage.setItem(LS_KEY_DEFAULT, JSON.stringify(snapshotParams()));
-    }
+    // Siempre guardar defaults desde los valores hardcoded del codigo
+    // para que el boton "Reset" siempre restaure los valores originales
+    localStorage.setItem(LS_KEY_DEFAULT, JSON.stringify(snapshotParams()));
+
+    // Limpiar configs de sets guardadas que tengan zonas distintas a las originales
+    [1, 2, 3].forEach(n => {
+      const raw = localStorage.getItem(lsKeySet(n));
+      if (!raw) return;
+      try {
+        const snap = JSON.parse(raw);
+        if (!snap.audio || !snap.audio.zones) return;
+        const orig = [210, 710, 1210, 1710, 2210, 2710, 3200];
+        const saved = snap.audio.zones;
+        const mismatch = saved[0].min !== orig[0] || saved.some((z, i) => z.max !== orig[i + 1]);
+        if (mismatch) localStorage.removeItem(lsKeySet(n));
+      } catch(e) { localStorage.removeItem(lsKeySet(n)); }
+    });
 
     // Cargar params del set guardado o defaults
     function loadSetParams(setNum) {
