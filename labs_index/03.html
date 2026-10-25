@@ -105,7 +105,7 @@
   <a href="../index.html" title="Volver al index" style="position:fixed;top:10px;left:10px;z-index:10000;background:rgba(0,0,0,0.6);border:1px solid rgba(0,255,65,0.5);color:#0f0;font-size:22px;width:36px;height:36px;border-radius:6px;display:flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer;">&#x25CE;</a>
   <button id="aspect-btn" title="Alternar aspecto video (cover/contain)" style="position:fixed;top:10px;left:56px;z-index:10000;background:rgba(0,0,0,0.6);border:1px solid rgba(0,255,65,0.5);color:#0f0;font-size:13px;font-family:monospace;font-weight:bold;width:42px;height:36px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;">16:9</button>
   <button id="radar-btn" title="Forzar radar visible" style="position:fixed;top:10px;left:108px;z-index:10000;background:rgba(0,0,0,0.6);border:1px solid rgba(0,255,65,0.5);color:#0f0;font-size:13px;font-family:monospace;font-weight:bold;width:52px;height:36px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;">RADAR</button>
-  <button id="finish-btn" title="Permitir final de contenido" style="position:fixed;top:10px;left:170px;z-index:10000;background:rgba(0,0,0,0.6);border:1px solid rgba(0,255,65,0.5);color:#0f0;font-size:10px;font-family:monospace;font-weight:bold;height:36px;padding:0 8px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;white-space:nowrap;">FINALIZAR</button>
+  <button id="finish-btn" title="Permitir final de contenido" style="position:fixed;top:10px;left:170px;z-index:10000;background:rgba(0,255,65,0.3);border:1px solid rgba(0,255,65,0.5);color:#0f0;font-size:10px;font-family:monospace;font-weight:bold;height:36px;padding:0 8px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;white-space:nowrap;">FINALIZAR</button>
   <div id="overlay">
     <h1>INICIAR IMC.TESTING</h1>
   </div>
@@ -115,7 +115,7 @@
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script>
     let systemStarted = false;
-    let waitForFinish = false;
+    let waitForFinish = true;
     let pendingIdx = -1;
     let lastDistance = 99999;
 
@@ -144,7 +144,7 @@
       if (conf.src) { // Solo si hay un archivo de video definido
         const v = document.createElement('video');
         v.src = conf.src;
-        v.loop = true; v.muted = true; v.playsInline = true; v.preload = 'auto';
+        v.loop = false; v.muted = true; v.playsInline = true; v.preload = 'auto';
         v.className = 'video-layer';
         v.id = 'video-' + index;
         container.appendChild(v);
